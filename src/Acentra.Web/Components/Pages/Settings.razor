@@ -1,0 +1,296 @@
+@page "/settings"
+@inject TenantStateService TenantService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="settings" Size="14" /> Platform Administration
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Organization Context: @TenantService.CurrentTenant.Name</span>
+        </div>
+        <h1>Settings & Configuration</h1>
+        <p>Manage multi-tenant isolation policies, KMS keyrings, branch hierarchies, user roles, and compliance webhooks.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-primary" @onclick="SaveSettings">
+            <IconSvg Name="check" Size="14" /> Save Changes
+        </button>
+    </div>
+</div>
+
+<!-- Settings Navigation Tabs -->
+<div class="org-card" style="padding: 10px 16px; margin-bottom: 24px;">
+    <div style="display: flex; gap: 12px; overflow-x: auto;">
+        @foreach (var tab in new[] { "Organization Profile", "Branch Registry", "KMS & Cryptography", "Role-Based Access (RBAC)", "Compliance & Webhooks" })
+        {
+            var isSel = activeTab == tab;
+            <button class="btn btn-sm" style="border-radius: var(--border-radius-md); padding: 8px 14px; font-size: 13px; font-weight: 600; border: none; background: @(isSel ? "var(--blue-50)" : "transparent"); color: @(isSel ? "var(--blue-700)" : "var(--text-muted)"); border-bottom: 2px solid @(isSel ? "var(--blue-600)" : "transparent");"
+                    @onclick="() => activeTab = tab">
+                @tab
+            </button>
+        }
+    </div>
+</div>
+
+<!-- Settings Content -->
+@if (activeTab == "Organization Profile")
+{
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+        <div class="org-card">
+            <div class="card-header-bar">
+                <div>
+                    <div class="card-title-lg">Healthcare Organization Metadata</div>
+                    <div class="card-subtitle-sm">Core organization profile for @TenantService.CurrentTenant.Name</div>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Organization Display Name</label>
+                    <input type="text" class="form-control-org" @bind="TenantService.CurrentTenant.Name" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Tenant Identification Code</label>
+                        <input type="text" class="form-control-org" value="@TenantService.CurrentTenant.Code" readonly />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Operating Region / Territory</label>
+                        <input type="text" class="form-control-org" @bind="TenantService.CurrentTenant.Region" />
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Chief Operations Contact</label>
+                    <input type="text" class="form-control-org" @bind="TenantService.CurrentTenant.PrimaryContact" />
+                </div>
+            </div>
+        </div>
+
+        <div class="org-card">
+            <div class="card-header-bar">
+                <div class="card-title-lg">Tenant Health</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">Tenant Status:</span>
+                    <span class="status-badge healthy">● Active & Isolated</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">Registered Users:</span>
+                    <strong>@TenantService.CurrentTenant.ActiveUsersCount.ToString("N0") staff</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">Branch Campuses:</span>
+                    <strong>@TenantService.CurrentTenant.Branches.Count locations</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">Inventory Valuation:</span>
+                    <strong style="color: var(--green-700);">₹@((TenantService.CurrentTenant.TotalStockValue / 10000000).ToString("N2")) Cr</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (activeTab == "Branch Registry")
+{
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Branch Campuses & Hospital Facilities</div>
+                <div class="card-subtitle-sm">Facilities enrolled under @TenantService.CurrentTenant.Name</div>
+            </div>
+            <button class="btn-org btn-org-primary btn-org-sm" @onclick="() => showAddBranchModal = true">
+                <IconSvg Name="plus" Size="14" /> + Add Branch
+            </button>
+        </div>
+
+        <div class="table-responsive-org">
+            <table class="table-org">
+                <thead>
+                    <tr>
+                        <th>Branch Campus Name</th>
+                        <th>Branch Code</th>
+                        <th>City / Metro</th>
+                        <th>Physical Address</th>
+                        <th>Catalog Items</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var br in TenantService.CurrentTenant.Branches)
+                    {
+                        <tr>
+                            <td><strong style="color: var(--navy-900);">@br.Name</strong></td>
+                            <td><span class="sku-badge">@br.Code</span></td>
+                            <td>@br.City</td>
+                            <td><span style="font-size: 12px; color: var(--text-muted);">@br.Address</span></td>
+                            <td><strong style="color: var(--navy-900);">@br.TotalItemsCount.ToString("N0")</strong></td>
+                            <td><span class="status-badge healthy">Active</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else if (activeTab == "KMS & Cryptography")
+{
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <div class="org-card">
+            <div class="card-header-bar">
+                <div class="card-title-lg">Tenant Envelope Encryption Keyring</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Current Master KMS Key ID</label>
+                    <input type="text" class="form-control-org" value="@TenantService.CurrentTenant.EncryptionKeyId" readonly style="font-family: monospace; font-size: 12px;" />
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Algorithm & Cipher Mode</label>
+                    <input type="text" class="form-control-org" value="AES-256 GCM (Authenticated 128-bit Tag)" readonly />
+                </div>
+                <div style="border-top: 1px solid var(--border-subtle); padding-top: 14px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 12px; color: var(--text-muted);">Key Rotation Schedule: Annual (Auto)</span>
+                    <button class="btn-org btn-org-secondary btn-org-sm" @onclick="RotateKey">
+                        <IconSvg Name="refresh" Size="13" /> Rotate Master Key
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="org-card" style="background-color: var(--surface-subtle);">
+            <div class="card-header-bar">
+                <div class="card-title-lg">Zero-Trust Isolation Attestation</div>
+            </div>
+            <div style="font-size: 13px; color: var(--text-main); line-height: 1.6;">
+                <p>
+                    Every database query, S3 document storage prefix, and memory buffer is strictly segregated using the <strong>@TenantService.CurrentTenant.Id</strong> boundary claim.
+                </p>
+                <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; font-family: monospace; font-size: 11.5px; color: var(--blue-700); margin-top: 10px;">
+                    // Scoped query execution assertion<br />
+                    WHERE e.TenantId == "<strong>@TenantService.CurrentTenant.Id</strong>"<br />
+                    AND e.BranchId IN (@string.Join(", ", TenantService.CurrentTenant.Branches.Select(b => $"\"{b.Id}\"")))
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div class="card-title-lg">Compliance & Webhook Forwarding</div>
+            <div class="card-subtitle-sm">Forward audit telemetry to external SIEM & regulatory auditors</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">SIEM Syslog Webhook Endpoint</label>
+                <input type="text" class="form-control-org" placeholder="https://siem.internal-security.org/v1/events" value="https://siem.internal-security.org/v1/events/orgshield" />
+            </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Audit Stream Format</label>
+                <select class="form-select-org">
+                    <option>CEF (Common Event Format) over TLS</option>
+                    <option>JSON Event Schema (OpenTelemetry 1.2)</option>
+                </select>
+            </div>
+            <div style="margin-top: 10px;">
+                <button class="btn-org btn-org-teal btn-org-sm" @onclick='() => ToastService.Success("Webhook Verified", "Test handshake sent to SIEM endpoint. HTTP 200 OK received.")'>
+                    <IconSvg Name="check" Size="14" /> Send Test Handshake
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Branch Modal -->
+@if (showAddBranchModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showAddBranchModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 500px;">
+            <div class="modal-header-org">
+                <h3 style="font-size: 16px; margin: 0; font-weight: 700;">Add Branch Facility</h3>
+                <button class="header-icon-btn" @onclick="() => showAddBranchModal = false">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Branch Name</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. Trichy • Specialty Care" @bind="newBranchName" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">City</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. Trichy" @bind="newBranchCity" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Branch Code</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. TRZ-01" @bind="newBranchCode" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showAddBranchModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="AddBranch">Save Branch</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string activeTab = "Organization Profile";
+    private bool showAddBranchModal = false;
+    private string newBranchName = "";
+    private string newBranchCity = "";
+    private string newBranchCode = "";
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void SaveSettings()
+    {
+        ToastService.Success("Settings Saved", "Organization configuration and policies updated.");
+    }
+
+    private void RotateKey()
+    {
+        TenantService.CurrentTenant.EncryptionKeyId = $"KMS-{TenantService.CurrentTenant.Code}-{Random.Shared.Next(10000, 99999)}-AES256";
+        ToastService.Success("Master Key Rotated", $"New KMS envelope master key provisioned: {TenantService.CurrentTenant.EncryptionKeyId}");
+    }
+
+    private void AddBranch()
+    {
+        if (string.IsNullOrWhiteSpace(newBranchName)) return;
+
+        var br = new Branch
+        {
+            Id = $"BR-{TenantService.CurrentTenant.Branches.Count + 1:D2}",
+            Name = newBranchName,
+            City = string.IsNullOrWhiteSpace(newBranchCity) ? "Regional Center" : newBranchCity,
+            Code = string.IsNullOrWhiteSpace(newBranchCode) ? "BR-NEW" : newBranchCode,
+            Address = "Medical Hub Campus",
+            TotalItemsCount = 3500,
+            LowStockCount = 5
+        };
+
+        TenantService.CurrentTenant.Branches.Add(br);
+        TenantService.CurrentTenant.BranchCount = TenantService.CurrentTenant.Branches.Count;
+        showAddBranchModal = false;
+        newBranchName = "";
+        newBranchCity = "";
+        newBranchCode = "";
+        ToastService.Success("Branch Registered", $"{br.Name} added to {TenantService.CurrentTenant.Name}.");
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

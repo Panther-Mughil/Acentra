@@ -1,0 +1,132 @@
+@*
+    The TopHeader's organisation switcher (REQ-005 requirement #8).
+
+    It is deliberately NOT the demo modal it started as: the list comes from
+    TenantStateService.AvailableTenants, which is populated from ITenantRegistry.FindForUserAsync —
+    the signed-in user's *memberships*, never a client-supplied list. Selecting an entry mutates the
+    circuit's TenantState and then persists the choice through the REQ-008 `?tenant=` hint with a
+    forced reload, exactly like the sidebar select, so the middleware re-authorizes it and the
+    reloaded circuit is seeded from the continuity cookie.
+
+    There is no "create organisation" action: self-service tenant provisioning does not exist in
+    this control plane, and a button that only appeared to create one would be theatre.
+*@
+@inject TenantStateService TenantService
+@implements IDisposable
+
+@if (IsOpen)
+{
+    <div class="modal-backdrop-org" @onclick="Close">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 540px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--navy-900); color: #FFF; display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="tenant" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">SELECT ORGANIZATION</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Only organizations this account is a member of are listed</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="Close" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="padding: 18px 24px;">
+                <div style="margin-bottom: 16px; position: relative;">
+                    <input type="text" class="form-control-org" placeholder="Search organizations or identifiers..."
+                           @bind="searchTerm" @bind:event="oninput" style="padding-left: 36px;" />
+                    <div style="position: absolute; left: 12px; top: 11px; color: var(--text-light);">
+                        <IconSvg Name="search" Size="16" />
+                    </div>
+                </div>
+
+                @if (FilteredTenants.Count == 0)
+                {
+                    <div style="padding: 26px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                        <IconSvg Name="tenant" Size="28" Class="mb-2" />
+                        <div>No organizations are available for this account.</div>
+                    </div>
+                }
+                else
+                {
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto;">
+                        @foreach (var tenant in FilteredTenants)
+                        {
+                            var isCurrent = tenant.Id == TenantService.CurrentTenant.Id;
+                            <div style="border: 1.5px solid @(isCurrent ? "var(--blue-600)" : "var(--border-subtle)"); background-color: @(isCurrent ? "var(--blue-50)" : "#FFFFFF"); border-radius: var(--border-radius-md); padding: 14px; cursor: pointer; transition: all var(--transition-fast);"
+                                 @onclick="() => SelectTenant(tenant.Id)">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <div style="width: 10px; height: 10px; border-radius: 50%; background-color: @(isCurrent ? "var(--blue-600)" : "var(--green-600)");"></div>
+                                        <div>
+                                            <div style="font-size: 14px; font-weight: 700; color: var(--navy-900);">@tenant.Name</div>
+                                            <div style="font-size: 12px; color: var(--text-muted);">@tenant.Code</div>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span class="sku-badge" style="font-size: 10.5px;">@ShortId(tenant.Id)</span>
+                                        @if (isCurrent)
+                                        {
+                                            <span style="color: var(--blue-600);"><IconSvg Name="check" Size="16" /></span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div style="border-top: 1px solid var(--border-subtle); margin-top: 16px; padding-top: 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 12px; color: var(--text-muted);">Showing @FilteredTenants.Count organization(s) you are a member of</span>
+                    </div>
+                }
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="Close">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private string searchTerm = "";
+
+    private List<Acentra.Web.Models.Tenant> FilteredTenants => string.IsNullOrWhiteSpace(searchTerm)
+        ? TenantService.AvailableTenants
+        : TenantService.AvailableTenants.Where(t =>
+            t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            t.Code.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            t.Id.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+        ).ToList();
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void SelectTenant(string tenantId)
+    {
+        // The service re-checks the id against the membership list before it moves anything, and the
+        // navigation reloads so the middleware re-authorizes the choice.
+        TenantService.SwitchTenant(tenantId);
+        Close();
+    }
+
+    private static string ShortId(string id) => id.Length > 8 ? id[..8] : id;
+
+    private void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

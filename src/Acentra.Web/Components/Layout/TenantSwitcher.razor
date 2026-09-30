@@ -11,6 +11,7 @@
     another one.
 *@
 @inject ITenantRegistry TenantRegistry
+@inject TenantStateService TenantStateService
 @inject TenantState Tenant
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -69,6 +70,13 @@
 
         _tenants = await TenantRegistry.FindForUserAsync(userId, CancellationToken.None);
         _loaded = true;
+
+        // Publish the memberships we just read to the shell's shared view. This is the ONLY registry
+        // read in the render pass on purpose: ITenantRegistry is backed by the scoped
+        // ControlPlaneDbContext, which allows one operation at a time, so a second concurrent reader
+        // (the enterprise pages used to start one) would fail the page). Purely additive — the
+        // fail-closed logic below is unchanged.
+        TenantStateService.ApplyMemberships(_tenants);
 
         // Membership is the authority; the circuit's tenant is only a cached decision. If it is no
         // longer in the list, drop it and force a re-selection — never fall back to another tenant.

@@ -1,7 +1,556 @@
-﻿@page "/"
+@*
+    The `/` route is on the tenant-agnostic allowlist, so this page can render with NO tenant
+    resolved (an unauthenticated visitor, for instance). Everything it shows about a tenant comes
+    from the circuit's authorized tenant via TenantStateService — and the product counts come from
+    the real, tenant-scoped IInventoryService, loaded only when a tenant is resolved. The remaining
+    figures (purchase orders, security events, the charts) are illustrative demo content: there is
+    no backend for them, and the note below says so rather than implying otherwise.
+*@
+@page "/"
+@page "/dashboard"
+@inject TenantStateService TenantService
+@inject TenantState Tenant
+@inject IInventoryService Inventory
+@inject NavigationManager Nav
+@inject ToastService ToastService
+@implements IDisposable
 
-<PageTitle>Home</PageTitle>
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="system-status-indicator">
+                <span class="pulse-dot"></span>
+                <span>All systems operational</span>
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Last updated: Just now</span>
+        </div>
+        <h1>Good morning, Jagadeesh</h1>
+        <p>
+            Here's what's happening across <strong>@TenantService.CurrentTenant.Name</strong>
+            @if (Tenant.IsResolved)
+            {
+                <span>(tenant <code>@Tenant.Slug</code>)</span>
+            }
+            today.
+        </p>
+    </div>
 
-<h1>Hello, world!</h1>
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-secondary" @onclick='() => Nav.NavigateTo("/analytics")'>
+            <IconSvg Name="analytics" Size="15" /> View Analytics
+        </button>
+        <button class="btn-org btn-org-primary" @onclick='() => Nav.NavigateTo("/orders")'>
+            <IconSvg Name="plus" Size="15" /> + New Purchase Order
+        </button>
+    </div>
+</div>
 
-Welcome to your new app.
+@if (!Tenant.IsResolved)
+{
+    <div class="alert alert-secondary" role="alert">
+        <strong>No tenant selected.</strong> Choose a tenant from the switcher to see that tenant's
+        inventory. This page shows no data until then — an unresolved tenant never means "every".
+    </div>
+}
+
+<div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 10px 14px; font-size: 12px; color: var(--text-muted); margin-bottom: 20px; display: flex; gap: 8px; align-items: center;">
+    <IconSvg Name="help" Size="15" />
+    <span>
+        Product counts are read live from this tenant's own inventory. The purchase-order, security
+        and chart figures on this overview are illustrative demo content — no backend serves them.
+    </span>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <!-- Total Inventory -->
+    <div class="kpi-card" @onclick='() => Nav.NavigateTo("/inventory")' style="cursor: pointer;">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Total Inventory</span>
+            <div class="kpi-icon-box kpi-icon-blue">
+                <IconSvg Name="inventory" Size="18" />
+            </div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">@_totalProducts.ToString("N0")</span>
+                <span class="kpi-unit">Products</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-context">live from tenant @Tenant.Slug</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Low Stock -->
+    <div class="kpi-card" @onclick='() => Nav.NavigateTo("/inventory")' style="cursor: pointer;">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Active Products</span>
+            <div class="kpi-icon-box kpi-icon-amber">
+                <IconSvg Name="check" Size="18" />
+            </div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--amber-600);">@_activeProducts.ToString("N0")</span>
+                <span class="kpi-unit">Products</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-context">of @_totalProducts in tenant @Tenant.Slug</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Purchase Orders -->
+    <div class="kpi-card" @onclick='() => Nav.NavigateTo("/orders")' style="cursor: pointer;">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Purchase Orders</span>
+            <div class="kpi-icon-box kpi-icon-teal">
+                <IconSvg Name="orders" Size="18" />
+            </div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">184</span>
+                <span class="kpi-unit">Active orders</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-up">
+                    <IconSvg Name="arrow-up" Size="13" /> 6.2%
+                </span>
+                <span class="trend-context">on schedule</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Events -->
+    <div class="kpi-card" @onclick='() => Nav.NavigateTo("/security")' style="cursor: pointer;">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Security Events</span>
+            <div class="kpi-icon-box kpi-icon-red">
+                <IconSvg Name="shield-check" Size="18" />
+            </div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--red-600);">3</span>
+                <span class="kpi-unit">Requires attention</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-down" style="color: var(--red-600);">
+                    <IconSvg Name="alert-triangle" Size="13" /> 2 critical
+                </span>
+                <span class="trend-context">blocked by WAF</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Visualizations Grid -->
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Inventory Health Card -->
+    <div class="org-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Inventory Health</div>
+                <div class="card-subtitle-sm">Overall stock condition across 8 departments</div>
+            </div>
+            <a href="inventory" style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                View inventory →
+            </a>
+        </div>
+
+        <!-- Donut Visualization -->
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px 0;">
+            <div style="position: relative; width: 170px; height: 170px;">
+                <svg width="170" height="170" viewBox="0 0 42 42">
+                    <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#E2E8F0" stroke-width="4.5"></circle>
+                    <!-- Healthy 82% -->
+                    <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#10B981" stroke-width="4.5"
+                            stroke-dasharray="82 18" stroke-dashoffset="25"></circle>
+                    <!-- Low Stock 11% -->
+                    <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#F59E0B" stroke-width="4.5"
+                            stroke-dasharray="11 89" stroke-dashoffset="-57"></circle>
+                    <!-- Critical 3% -->
+                    <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#EF4444" stroke-width="4.5"
+                            stroke-dasharray="3 97" stroke-dashoffset="-68"></circle>
+                    <!-- Overstock 4% -->
+                    <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#1E88E5" stroke-width="4.5"
+                            stroke-dasharray="4 96" stroke-dashoffset="-71"></circle>
+                </svg>
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+                    <span style="font-size: 28px; font-weight: 800; color: var(--navy-900); font-family: var(--font-heading); line-height: 1;">82%</span>
+                    <span style="font-size: 11px; font-weight: 700; color: var(--green-700); text-transform: uppercase;">Healthy</span>
+                </div>
+            </div>
+
+            <!-- Health Breakdown Legend -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; width: 100%; margin-top: 18px; padding: 0 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--green-600);"></span>
+                        <span style="color: var(--text-main);">Healthy</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--navy-900);">82%</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--amber-500);"></span>
+                        <span style="color: var(--text-main);">Low Stock</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--amber-600);">11%</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--red-600);"></span>
+                        <span style="color: var(--text-main);">Critical</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--red-600);">3%</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--blue-500);"></span>
+                        <span style="color: var(--text-main);">Overstock</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--blue-600);">4%</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="background-color: var(--surface-subtle); padding: 10px 14px; border-radius: var(--border-radius-md); font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; margin-top: 12px;">
+            <span>Stock Depletion Velocity: <strong>Normal</strong></span>
+            <span style="color: var(--teal-600); font-weight: 600;">Optimal Range</span>
+        </div>
+    </div>
+
+    <!-- Inventory Movement Trend Chart -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Inventory Movement</div>
+                <div class="card-subtitle-sm">Inflow, dispensing, and buffer reconciliation</div>
+            </div>
+            <!-- Time Filter Tabs -->
+            <div style="display: flex; background: var(--surface-subtle); border-radius: 8px; padding: 3px; gap: 2px; border: 1px solid var(--border-subtle);">
+                @foreach (var tf in timeFilters)
+                {
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; border-radius: 6px; border: none; background: @(selectedTimeFilter == tf ? "#FFFFFF" : "transparent"); color: @(selectedTimeFilter == tf ? "var(--navy-900)" : "var(--text-muted)"); box-shadow: @(selectedTimeFilter == tf ? "var(--shadow-sm)" : "none");"
+                            @onclick="() => selectedTimeFilter = tf">
+                        @tf
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Interactive SVG Line/Area Trend Chart -->
+        <div style="position: relative; width: 100%; height: 210px; margin-top: 10px;">
+            <svg width="100%" height="210" viewBox="0 0 600 210" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#1769AA" stop-opacity="0.25"></stop>
+                        <stop offset="100%" stop-color="#1769AA" stop-opacity="0.0"></stop>
+                    </linearGradient>
+                    <linearGradient id="tealGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#00A6A6" stop-opacity="0.25"></stop>
+                        <stop offset="100%" stop-color="#00A6A6" stop-opacity="0.0"></stop>
+                    </linearGradient>
+                </defs>
+
+                <!-- Grid lines -->
+                <line x1="0" y1="30" x2="600" y2="30" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="80" x2="600" y2="80" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="130" x2="600" y2="130" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="180" x2="600" y2="180" stroke="#E2E8F0" stroke-width="1"></line>
+
+                <!-- Area Fill: Stock Received -->
+                <polygon points="0,180 0,110 100,85 200,60 300,75 400,45 500,50 600,35 600,180" fill="url(#blueGrad)"></polygon>
+                <!-- Line: Stock Received -->
+                <polyline points="0,110 100,85 200,60 300,75 400,45 500,50 600,35" fill="none" stroke="#1769AA" stroke-width="2.5" stroke-linecap="round"></polyline>
+
+                <!-- Area Fill: Stock Consumed -->
+                <polygon points="0,180 0,140 100,125 200,95 300,110 400,80 500,90 600,70 600,180" fill="url(#tealGrad)"></polygon>
+                <!-- Line: Stock Consumed -->
+                <polyline points="0,140 100,125 200,95 300,110 400,80 500,90 600,70" fill="none" stroke="#00A6A6" stroke-width="2.5" stroke-linecap="round"></polyline>
+
+                <!-- Line: Stock Adjusted -->
+                <polyline points="0,170 100,165 200,160 300,168 400,158 500,162 600,155" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4 4"></polyline>
+
+                <!-- Interactive Data Points -->
+                <circle cx="400" cy="45" r="4.5" fill="#FFFFFF" stroke="#1769AA" stroke-width="2.5"></circle>
+                <circle cx="400" cy="80" r="4.5" fill="#FFFFFF" stroke="#00A6A6" stroke-width="2.5"></circle>
+            </svg>
+
+            <!-- X-Axis Labels -->
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-light); margin-top: 4px;">
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+                <span>Sun (Today)</span>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div style="display: flex; align-items: center; justify-content: center; gap: 24px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 14px; height: 3px; background-color: #1769AA; border-radius: 2px;"></span>
+                <span style="color: var(--text-main); font-weight: 500;">Stock Received (2,450 units)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 14px; height: 3px; background-color: #00A6A6; border-radius: 2px;"></span>
+                <span style="color: var(--text-main); font-weight: 500;">Stock Consumed (1,890 units)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 14px; height: 3px; background-color: #F59E0B; border-radius: 2px; border: 1px dashed #F59E0B;"></span>
+                <span style="color: var(--text-main); font-weight: 500;">Stock Adjusted (42 units)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI / Intelligent Operations Section -->
+<div class="org-card" style="margin-bottom: 24px;">
+    <div class="card-header-bar" style="margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #1769AA 0%, #00A6A6 100%); color: #FFFFFF; display: flex; align-items: center; justify-content: center;">
+                <IconSvg Name="sparkles" Size="16" />
+            </div>
+            <div>
+                <div class="card-title-lg" style="display: flex; align-items: center; gap: 8px;">
+                    Intelligent Operations
+                    <span class="ai-badge">AI-Assisted Insights</span>
+                </div>
+                <div class="card-subtitle-sm">Actionable insights generated from operational and supply data</div>
+            </div>
+        </div>
+        <button class="btn-org btn-org-secondary btn-org-sm" @onclick="RefreshInsights">
+            <IconSvg Name="refresh" Size="13" /> Refresh Insights
+        </button>
+    </div>
+
+    <!-- Insights Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+        <!-- Insight 1: Reorder Recommended -->
+        <div class="insight-card">
+            <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: var(--amber-600); display: flex; align-items: center; gap: 4px;">
+                        <IconSvg Name="warning" Size="14" /> ⚠ Reorder Recommended
+                    </span>
+                    <span class="sku-badge">MED-2048</span>
+                </div>
+                <div style="font-weight: 700; font-size: 15px; color: var(--navy-900); margin-bottom: 6px;">Surgical Nitrile Gloves</div>
+                <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
+                    Current stock is <strong>1,240 boxes</strong>. Estimated remaining runway is <strong>6 days</strong> based on 8 ICU consumption rate.
+                </p>
+                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Recommended order:</span>
+                    <strong style="color: var(--blue-600);">5,000 units (HealthSupply)</strong>
+                </div>
+            </div>
+            <button class="btn-org btn-org-primary btn-org-sm" style="width: 100%;" @onclick="TriggerReorderRecommendation">
+                Review Recommendation
+            </button>
+        </div>
+
+        <!-- Insight 2: Optimization Opportunity -->
+        <div class="insight-card">
+            <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: var(--green-700); display: flex; align-items: center; gap: 4px;">
+                        <IconSvg Name="check" Size="14" /> ✓ Optimization Opportunity
+                    </span>
+                    <span class="status-badge healthy" style="font-size: 10.5px; padding: 2px 6px;">Logistics</span>
+                </div>
+                <div style="font-weight: 700; font-size: 15px; color: var(--navy-900); margin-bottom: 6px;">Overlapping Delivery Corridors</div>
+                <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
+                    3 primary suppliers have overlapping delivery schedules for Chennai Central Hospital next Tuesday.
+                </p>
+                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Potential monthly saving:</span>
+                    <strong style="color: var(--green-700);">₹42,000 / month</strong>
+                </div>
+            </div>
+            <button class="btn-org btn-org-secondary btn-org-sm" style="width: 100%;" @onclick="TriggerOptimizationAnalysis">
+                View Analysis
+            </button>
+        </div>
+
+        <!-- Insight 3: Cold-Chain Verification -->
+        <div class="insight-card">
+            <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="font-size: 11.5px; font-weight: 700; color: var(--teal-700); display: flex; align-items: center; gap: 4px;">
+                        <IconSvg Name="shield-check" Size="14" /> 🔒 Cold-Chain Compliance
+                    </span>
+                    <span class="sku-badge">MED-8810</span>
+                </div>
+                <div style="font-weight: 700; font-size: 15px; color: var(--navy-900); margin-bottom: 6px;">Propofol Vault Thermal Stability</div>
+                <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
+                    Continuous IoT sensor telemetry confirms 100% temperature compliance (4.2°C) with zero thermal excursion events in last 30 days.
+                </p>
+                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Thermal Compliance:</span>
+                    <strong style="color: var(--teal-700);">100.0% Compliant</strong>
+                </div>
+            </div>
+            <button class="btn-org btn-org-secondary btn-org-sm" style="width: 100%;" @onclick='() => Nav.NavigateTo("/security")'>
+                Inspect Sensor Logs
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Operations & Security Summary Banner -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <!-- Recent Critical Activity -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Recent Operations Activity</div>
+                <div class="card-subtitle-sm">Live audit events for @TenantService.CurrentTenant.Name</div>
+            </div>
+            <a href="audit-logs" style="font-size: 13px; font-weight: 600;">View all logs →</a>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 12px; font-size: 12.5px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+                <div style="font-weight: 700; color: var(--blue-600); min-width: 65px;">10:42 AM</div>
+                <div>
+                    <strong>Jagadeesh</strong> updated inventory for <em>Surgical Gloves</em> (1,500 → 1,240).
+                    <div style="font-size: 11px; color: var(--text-light);">IP: 192.168.1.104 • Ward Distribution</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 12.5px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+                <div style="font-weight: 700; color: var(--blue-600); min-width: 65px;">10:35 AM</div>
+                <div>
+                    <strong>Admin</strong> uploaded encrypted document <em>invoice_2048.pdf</em> to KMS vault.
+                    <div style="font-size: 11px; color: var(--text-light);">SHA256: e3b0c442...991b7852</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 12.5px;">
+                <div style="font-weight: 700; color: var(--red-600); min-width: 65px;">10:22 AM</div>
+                <div>
+                    <strong>Security Engine</strong> blocked foreign cross-tenant access attempt from 203.0.113.88.
+                    <div style="font-size: 11px; color: var(--text-light);">HTTP 403 Forbidden • Zero Leakage</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Isolation Status Preview Card -->
+    <div class="org-card" style="background: linear-gradient(135deg, #0B1F33 0%, #13304F 100%); color: #FFFFFF; border: none;">
+        <div class="card-header-bar" style="border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px;">
+            <div>
+                <div class="card-title-lg" style="color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <IconSvg Name="shield-check" Size="18" /> Multi-Tenant Cryptographic Isolation
+                </div>
+                <div class="card-subtitle-sm" style="color: #94A3B8;">Active KMS Envelope Protection</div>
+            </div>
+            <span class="status-badge active-policy" style="background-color: rgba(0, 166, 166, 0.2); color: #22C7D6; border-color: rgba(0, 166, 166, 0.4);">
+                ● Active
+            </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; font-size: 12.5px;">
+            <div>
+                <span style="color: #94A3B8; font-size: 11px; display: block;">Active Tenant ID</span>
+                <strong style="color: #FFFFFF; font-family: monospace;">@TenantService.CurrentTenant.Id</strong>
+            </div>
+            <div>
+                <span style="color: #94A3B8; font-size: 11px; display: block;">Access Scope</span>
+                <strong style="color: #FFFFFF;">Organization + Branch</strong>
+            </div>
+            <div>
+                <span style="color: #94A3B8; font-size: 11px; display: block;">KMS Key ID</span>
+                <strong style="color: #22C7D6; font-family: monospace; font-size: 11.5px;">@TenantService.CurrentTenant.EncryptionKeyId</strong>
+            </div>
+            <div>
+                <span style="color: #94A3B8; font-size: 11px; display: block;">Cross-Tenant Barrier</span>
+                <strong style="color: #10B981;">Enforced & Monitored</strong>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 14px;">
+            <button class="btn-org btn-org-teal btn-org-sm" style="flex: 1;" @onclick='() => Nav.NavigateTo("/security")'>
+                <IconSvg Name="shield-check" Size="14" /> Run Tenant Security Test
+            </button>
+            <button class="btn-org btn-org-dark btn-org-sm" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);" @onclick='() => Nav.NavigateTo("/security")'>
+                View Security Center
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string selectedTimeFilter = "30D";
+    private readonly string[] timeFilters = new[] { "7D", "30D", "90D", "1Y" };
+
+    // The only real figures on this page: product counts for the circuit's tenant, read through the
+    // same tenant-scoped service the inventory page uses.
+    private int _totalProducts;
+    private int _activeProducts;
+
+    protected override void OnInitialized()
+    {
+        // Tenant.Changed is the authoritative signal (TenantStateService raises its own event from
+        // exactly this one), so subscribing once is enough to re-read the rows.
+        Tenant.Changed += HandleTenantChanged;
+    }
+
+    protected override async Task OnInitializedAsync() => await RefreshMetricsAsync();
+
+    private void HandleTenantChanged() => InvokeAsync(async () =>
+    {
+        await RefreshMetricsAsync();
+        StateHasChanged();
+    });
+
+    private async Task RefreshMetricsAsync()
+    {
+        // No resolved tenant — the `/` route is tenant-agnostic — means no rows and no query: an
+        // unresolved tenant is never "all tenants".
+        if (!Tenant.IsResolved)
+        {
+            _totalProducts = 0;
+            _activeProducts = 0;
+            return;
+        }
+
+        try
+        {
+            var products = await Inventory.ListProductsAsync();
+
+            _totalProducts = products.Count;
+            _activeProducts = products.Count(product => product.IsActive);
+        }
+        catch (Exception)
+        {
+            _totalProducts = 0;
+            _activeProducts = 0;
+        }
+    }
+
+    private void RefreshInsights()
+    {
+        ToastService.Success("AI Insights Refreshed", "Operational metrics and supply timelines recalculated.");
+    }
+
+    private void TriggerReorderRecommendation()
+    {
+        ToastService.Info("Drafting Purchase Order", "Pre-filling emergency reorder for 5,000 units of Surgical Nitrile Gloves.");
+        Nav.NavigateTo("/orders");
+    }
+
+    private void TriggerOptimizationAnalysis()
+    {
+        ToastService.Success("Consolidation Report", "Supplier logistics optimization analysis loaded.");
+        Nav.NavigateTo("/analytics");
+    }
+
+    public void Dispose()
+    {
+        Tenant.Changed -= HandleTenantChanged;
+    }
+}

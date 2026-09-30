@@ -1,0 +1,327 @@
+@page "/analytics"
+@inject TenantStateService TenantService
+@inject DemoInventoryService DemoInventoryService
+@inject SupplierService SupplierService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge healthy">
+                <IconSvg Name="analytics" Size="14" /> Real-Time Analytics Engine
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Aggregated across @TenantService.CurrentTenant.Name</span>
+        </div>
+        <h1>Analytics Workspace</h1>
+        <p>Cross-departmental telemetry, turnover velocity, supplier SLA ratings, and multi-branch efficiency matrices.</p>
+    </div>
+
+    <!-- Time Filter Pills -->
+    <div class="page-actions-group">
+        <div style="display: flex; background: #FFFFFF; border-radius: var(--border-radius-md); padding: 4px; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); gap: 4px;">
+            @foreach (var tf in new[] { "7D", "30D", "90D", "12M", "Custom" })
+            {
+                <button class="btn btn-sm" style="padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: none; background: @(selectedTimeRange == tf ? "var(--blue-600)" : "transparent"); color: @(selectedTimeRange == tf ? "#FFFFFF" : "var(--text-muted)");"
+                        @onclick="() => selectedTimeRange = tf">
+                    @tf
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Section Switcher Tabs -->
+<div class="org-card" style="padding: 10px 16px; margin-bottom: 24px;">
+    <div style="display: flex; gap: 12px; overflow-x: auto;">
+        @foreach (var sec in new[] { "Inventory Analytics", "Procurement Analytics", "Supplier Analytics", "Branch Analytics", "Operational Efficiency" })
+        {
+            var isSel = activeSection == sec;
+            <button class="btn btn-sm" style="border-radius: var(--border-radius-md); padding: 8px 14px; font-size: 13px; font-weight: 600; border: none; background: @(isSel ? "var(--blue-50)" : "transparent"); color: @(isSel ? "var(--blue-700)" : "var(--text-muted)"); border-bottom: 2px solid @(isSel ? "var(--blue-600)" : "transparent");"
+                    @onclick="() => activeSection = sec">
+                @sec
+            </button>
+        }
+    </div>
+</div>
+
+<!-- KPI Mini Stats -->
+<div class="kpi-grid" style="margin-bottom: 24px;">
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Inventory Turnover</span>
+            <div class="kpi-icon-box kpi-icon-blue"><IconSvg Name="refresh" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">8.4x</span>
+                <span class="kpi-unit">annualized</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-up"><IconSvg Name="arrow-up" Size="13" /> +0.6x</span>
+                <span class="trend-context">vs industry avg</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Stockout Risk Index</span>
+            <div class="kpi-icon-box kpi-icon-teal"><IconSvg Name="shield-check" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--teal-700);">0.3%</span>
+                <span class="kpi-unit">ultra low</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-down-good"><IconSvg Name="arrow-down" Size="13" /> -1.2%</span>
+                <span class="trend-context">critical resilience</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Monthly Procurement</span>
+            <div class="kpi-icon-box kpi-icon-amber"><IconSvg Name="orders" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">₹84.2 L</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-down-good"><IconSvg Name="arrow-down" Size="13" /> -4.1%</span>
+                <span class="trend-context">cost optimization</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Wastage / Expiry Loss</span>
+            <div class="kpi-icon-box kpi-icon-red"><IconSvg Name="warning" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--green-700);">0.08%</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-down-good"><IconSvg Name="arrow-down" Size="13" /> -65%</span>
+                <span class="trend-context">FEFO routing active</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Analytics Visualizations -->
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Chart 1: Stock Consumption vs Replenishment -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Monthly Stock Consumption vs Inflow</div>
+                <div class="card-subtitle-sm">Volume balancing across pharmaceuticals and surgical devices</div>
+            </div>
+            <span class="status-badge healthy">Balanced Inventory Flow</span>
+        </div>
+
+        <!-- SVG Bar & Line Combo Chart -->
+        <div style="height: 240px; position: relative; margin-top: 10px;">
+            <svg width="100%" height="220" viewBox="0 0 600 220" preserveAspectRatio="none">
+                <!-- Grid Lines -->
+                <line x1="0" y1="30" x2="600" y2="30" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="80" x2="600" y2="80" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="130" x2="600" y2="130" stroke="#F1F5F9" stroke-width="1"></line>
+                <line x1="0" y1="180" x2="600" y2="180" stroke="#E2E8F0" stroke-width="1"></line>
+
+                <!-- Month Bars (Inflow vs Outflow) -->
+                <!-- Apr -->
+                <rect x="40" y="70" width="22" height="110" rx="4" fill="#1769AA"></rect>
+                <rect x="66" y="90" width="22" height="90" rx="4" fill="#00A6A6"></rect>
+
+                <!-- May -->
+                <rect x="130" y="55" width="22" height="125" rx="4" fill="#1769AA"></rect>
+                <rect x="156" y="80" width="22" height="100" rx="4" fill="#00A6A6"></rect>
+
+                <!-- Jun -->
+                <rect x="220" y="45" width="22" height="135" rx="4" fill="#1769AA"></rect>
+                <rect x="246" y="60" width="22" height="120" rx="4" fill="#00A6A6"></rect>
+
+                <!-- Jul -->
+                <rect x="310" y="60" width="22" height="120" rx="4" fill="#1769AA"></rect>
+                <rect x="336" y="75" width="22" height="105" rx="4" fill="#00A6A6"></rect>
+
+                <!-- Aug -->
+                <rect x="400" y="40" width="22" height="140" rx="4" fill="#1769AA"></rect>
+                <rect x="426" y="50" width="22" height="130" rx="4" fill="#00A6A6"></rect>
+
+                <!-- Sep (Current) -->
+                <rect x="490" y="30" width="22" height="150" rx="4" fill="#1769AA"></rect>
+                <rect x="516" y="45" width="22" height="135" rx="4" fill="#00A6A6"></rect>
+
+                <!-- Trend Line: Efficiency Index -->
+                <polyline points="55,60 145,50 235,38 325,48 415,30 505,22" fill="none" stroke="#F59E0B" stroke-width="2.5"></polyline>
+                <circle cx="505" cy="22" r="4.5" fill="#FFFFFF" stroke="#F59E0B" stroke-width="2.5"></circle>
+            </svg>
+
+            <!-- Month labels -->
+            <div style="display: flex; justify-content: space-around; font-size: 11.5px; color: var(--text-light); margin-top: 4px;">
+                <span>Apr</span>
+                <span>May</span>
+                <span>Jun</span>
+                <span>Jul</span>
+                <span>Aug</span>
+                <span>Sep (Current)</span>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 20px; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 10px; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 12px; height: 12px; background-color: #1769AA; border-radius: 3px;"></span>
+                <span>Stock Received (Inflow)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 12px; height: 12px; background-color: #00A6A6; border-radius: 3px;"></span>
+                <span>Stock Consumed (Dispensed)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 14px; height: 2.5px; background-color: #F59E0B;"></span>
+                <span>Turnover Ratio Target</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart 2: Category Procurement Volume Breakdown -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Procurement Volume</div>
+                <div class="card-subtitle-sm">Category distribution</div>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px; padding: 6px 0;">
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: var(--navy-900);">Pharmaceuticals</span>
+                    <strong style="color: var(--blue-600);">38% (₹32.0 L)</strong>
+                </div>
+                <div style="height: 6px; background: #E2E8F0; border-radius: 9999px; overflow: hidden;">
+                    <div style="width: 38%; height: 100%; background: #1769AA;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: var(--navy-900);">Surgical Equipment</span>
+                    <strong style="color: var(--teal-600);">26% (₹21.9 L)</strong>
+                </div>
+                <div style="height: 6px; background: #E2E8F0; border-radius: 9999px; overflow: hidden;">
+                    <div style="width: 26%; height: 100%; background: #00A6A6;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: var(--navy-900);">PPE & Consumables</span>
+                    <strong style="color: var(--amber-600);">18% (₹15.1 L)</strong>
+                </div>
+                <div style="height: 6px; background: #E2E8F0; border-radius: 9999px; overflow: hidden;">
+                    <div style="width: 18%; height: 100%; background: #F59E0B;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: var(--navy-900);">IV Fluids & Infusions</span>
+                    <strong style="color: var(--cyan-500);">12% (₹10.1 L)</strong>
+                </div>
+                <div style="height: 6px; background: #E2E8F0; border-radius: 9999px; overflow: hidden;">
+                    <div style="width: 12%; height: 100%; background: #22C7D6;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: var(--navy-900);">Diagnostics & Lab</span>
+                    <strong style="color: #8B5CF6;">6% (₹5.1 L)</strong>
+                </div>
+                <div style="height: 6px; background: #E2E8F0; border-radius: 9999px; overflow: hidden;">
+                    <div style="width: 6%; height: 100%; background: #8B5CF6;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Branch Comparison Matrix -->
+<div class="org-card">
+    <div class="card-header-bar">
+        <div>
+            <div class="card-title-lg">Branch Operations Comparison Matrix</div>
+            <div class="card-subtitle-sm">Comparative stock health and delivery latency across @TenantService.CurrentTenant.Name branches</div>
+        </div>
+        <span class="sku-badge">@TenantService.CurrentTenant.Branches.Count Branches</span>
+    </div>
+
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th>Branch Location</th>
+                    <th>Total Cataloged Items</th>
+                    <th>Low Stock Incidents</th>
+                    <th>Fulfillment Lead Time</th>
+                    <th>Cold-Chain Compliance</th>
+                    <th>Operational Health</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var br in TenantService.CurrentTenant.Branches)
+                {
+                    <tr>
+                        <td>
+                            <strong style="color: var(--navy-900);">@br.Name</strong>
+                            <div style="font-size: 11.5px; color: var(--text-muted);">@br.Address</div>
+                        </td>
+                        <td>
+                            <strong style="color: var(--navy-900);">@br.TotalItemsCount.ToString("N0")</strong> items
+                        </td>
+                        <td>
+                            <span class="status-badge @(br.LowStockCount > 20 ? "low-stock" : "healthy")" style="font-size: 11px;">
+                                @br.LowStockCount items
+                            </span>
+                        </td>
+                        <td>
+                            <span style="font-weight: 600; color: var(--navy-900);">3.2 Days</span>
+                        </td>
+                        <td>
+                            <span style="color: var(--green-700); font-weight: 700;">100.0%</span>
+                        </td>
+                        <td>
+                            <span class="status-badge healthy" style="font-size: 11px;">
+                                <IconSvg Name="check" Size="12" /> Optimal
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private string selectedTimeRange = "30D";
+    private string activeSection = "Inventory Analytics";
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

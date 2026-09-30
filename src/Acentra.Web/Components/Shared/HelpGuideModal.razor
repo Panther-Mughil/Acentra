@@ -1,0 +1,88 @@
+@if (IsOpen)
+{
+    <div class="modal-backdrop-org" @onclick="Close">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 620px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="help" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">ORGSHIELD 360 — Platform Guide</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Ascendra Healthcare Hackathon Interactive Overview</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="Close" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+                <div style="background: linear-gradient(135deg, rgba(23, 105, 170, 0.08) 0%, rgba(0, 166, 166, 0.08) 100%); border: 1px solid rgba(23, 105, 170, 0.2); border-radius: var(--border-radius-md); padding: 14px;">
+                    <div style="font-weight: 700; color: var(--navy-900); font-size: 14px; margin-bottom: 4px;">Key Demonstration Highlights for Judges</div>
+                    <p style="font-size: 12.5px; color: var(--text-main); margin: 0;">
+                        ORGSHIELD 360 is an enterprise multi-tenant healthcare inventory and operations platform engineered for zero-trust security, real-time inventory tracking, and AI-assisted supply chain optimizations.
+                    </p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--blue-600); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                            <IconSvg Name="tenant" Size="14" /> Multi-Tenant Isolation
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+                            Switch between Apollo Healthcare, MedCare Network, and Nova Hospitals. Each tenant has isolated partition keys and branch registries.
+                        </p>
+                    </div>
+
+                    <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--teal-600); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                            <IconSvg Name="shield-check" Size="14" /> Security Center & Test
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+                            Navigate to <strong>Security Center</strong> and click <strong>Run Security Test</strong> to see a live 6-step multi-tenant boundary verification test!
+                        </p>
+                    </div>
+
+                    <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--amber-600); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                            <IconSvg Name="ai" Size="14" /> AI Operations Engine
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+                            Actionable smart insights on the dashboard flag impending stockouts (e.g. Surgical Gloves 6 days remaining) and logistical consolidation savings.
+                        </p>
+                    </div>
+
+                    <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--navy-900); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                            <IconSvg Name="search" Size="14" /> Global Search (Ctrl+K)
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+                            Press <strong>Ctrl + K</strong> anywhere to open the unified command palette to instantly search products, suppliers, POs, or jump between screens.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; background-color: var(--surface-subtle); padding: 10px 14px; border-radius: var(--border-radius-md); font-size: 12px;">
+                    <span style="color: var(--text-muted);">Platform Version: <strong>v3.6.0-Enterprise</strong></span>
+                    <span style="color: var(--green-700); font-weight: 600;">● Built for Ascendra Hackathon</span>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-primary" @onclick="Close">Got it</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+}

@@ -1,0 +1,444 @@
+@page "/orders"
+@inject PurchaseOrderService OrderService
+@inject SupplierService SupplierService
+@inject DemoInventoryService DemoInventoryService
+@inject TenantStateService TenantService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="orders" Size="14" /> Automated Procurement Pipeline
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• @TenantService.CurrentTenant.Name Supply Chain</span>
+        </div>
+        <h1>Purchase Orders</h1>
+        <p>Review requisitions, manage digital approval workflows, track dock deliveries, and reconcile supplier invoices.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-primary" @onclick="() => showCreateModal = true">
+            <IconSvg Name="plus" Size="14" /> + Create Purchase Order
+        </button>
+    </div>
+</div>
+
+<!-- Status Tabs Bar -->
+<div class="org-card" style="padding: 12px 20px; margin-bottom: 20px;">
+    <div style="display: flex; gap: 8px; overflow-x: auto; align-items: center; justify-content: space-between;">
+        <div style="display: flex; gap: 6px; overflow-x: auto;">
+            @foreach (var tab in new[] { "All", "Draft", "PendingApproval", "Approved", "Ordered", "PartiallyReceived", "Completed", "Cancelled" })
+            {
+                var isSel = selectedStatusTab == tab;
+                var count = tab == "All" ? OrderService.GetOrders().Count : OrderService.GetOrders().Count(o => o.Status.ToString() == tab);
+                <button class="btn btn-sm" style="border-radius: var(--border-radius-md); padding: 6px 12px; font-size: 12.5px; font-weight: 600; border: 1px solid @(isSel ? "var(--blue-600)" : "transparent"); background: @(isSel ? "var(--blue-50)" : "transparent"); color: @(isSel ? "var(--blue-700)" : "var(--text-muted)");"
+                        @onclick="() => selectedStatusTab = tab">
+                    @FormatStatusTabName(tab) (@count)
+                </button>
+            }
+        </div>
+        <div style="position: relative; width: 240px;">
+            <input type="text" class="form-control-org" placeholder="Search PO # or vendor..."
+                   @bind="searchTerm" @bind:event="oninput" style="padding: 6px 12px 6px 30px; font-size: 12.5px;" />
+            <div style="position: absolute; left: 10px; top: 8px; color: var(--text-light);">
+                <IconSvg Name="search" Size="14" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purchase Orders Table -->
+<div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th>PO Number</th>
+                    <th>Supplier</th>
+                    <th>Items & Quantity</th>
+                    <th>Total Amount</th>
+                    <th>Created Date</th>
+                    <th>Expected Delivery</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (FilteredOrders.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <IconSvg Name="orders" Size="32" Class="mb-2" />
+                            <div>No purchase orders found matching this filter.</div>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var po in FilteredOrders)
+                    {
+                        <tr style="cursor: pointer;" @onclick="() => OpenOrderDrawer(po)">
+                            <td>
+                                <div style="font-weight: 700; color: var(--blue-600); font-family: monospace;">@po.PoNumber</div>
+                                @if (po.Priority == "Critical" || po.Priority == "Urgent")
+                                {
+                                    <span class="status-badge critical" style="font-size: 9.5px; padding: 1px 5px;">@po.Priority</span>
+                                }
+                            </td>
+                            <td>
+                                <div style="font-weight: 600; color: var(--navy-900);">@po.SupplierName</div>
+                                <div style="font-size: 11.5px; color: var(--text-muted);">@po.BranchName</div>
+                            </td>
+                            <td>
+                                <div style="font-size: 13px; color: var(--text-main);">
+                                    @po.Items.Sum(i => i.Quantity).ToString("N0") units
+                                </div>
+                                <div style="font-size: 11.5px; color: var(--text-muted);">
+                                    @(po.Items.FirstOrDefault()?.ItemName ?? "General Supply")
+                                </div>
+                            </td>
+                            <td>
+                                <strong style="color: var(--navy-900); font-size: 14px;">₹@po.TotalAmount.ToString("N0")</strong>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--text-muted);">@po.CreatedDate.ToString("MMM dd, yyyy")</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--navy-900); font-weight: 500;">@po.ExpectedDelivery.ToString("MMM dd, yyyy")</span>
+                            </td>
+                            <td>
+                                <span class="status-badge @GetOrderStatusBadgeClass(po.Status)">
+                                    @po.Status
+                                </span>
+                            </td>
+                            <td style="text-align: right;" @onclick:stopPropagation>
+                                <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                                    @if (po.Status == OrderStatus.PendingApproval)
+                                    {
+                                        <button class="btn-org btn-org-primary btn-org-sm" @onclick="() => OrderService.ApproveOrder(po.Id)">
+                                            Approve
+                                        </button>
+                                    }
+                                    else if (po.Status == OrderStatus.Ordered || po.Status == OrderStatus.PartiallyReceived)
+                                    {
+                                        <button class="btn-org btn-org-teal btn-org-sm" @onclick="() => OrderService.ReceiveOrder(po.Id)">
+                                            Receive Stock
+                                        </button>
+                                    }
+                                    <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => OpenOrderDrawer(po)">
+                                        Details
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- PO Details Drawer -->
+@if (activeOrder != null)
+{
+    <div class="drawer-backdrop-org" @onclick="CloseDrawer">
+        <div class="drawer-panel-org" @onclick:stopPropagation>
+            <!-- Drawer Header -->
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; justify-content: space-between; background: var(--surface-subtle);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="sku-badge">@activeOrder.PoNumber</span>
+                        <span class="status-badge @GetOrderStatusBadgeClass(activeOrder.Status)">@activeOrder.Status</span>
+                    </div>
+                    <h2 style="font-size: 18px; margin: 0; color: var(--navy-900);">Requisition for @activeOrder.SupplierName</h2>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                        Target: @activeOrder.BranchName • Total: <strong>₹@activeOrder.TotalAmount.ToString("N0")</strong>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="CloseDrawer" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <!-- Progression Steps Bar -->
+            <div style="background-color: #FFFFFF; padding: 18px 24px; border-bottom: 1px solid var(--border-subtle);">
+                <div style="display: flex; justify-content: space-between; position: relative;">
+                    <!-- Line -->
+                    <div style="position: absolute; top: 12px; left: 20px; right: 20px; height: 2px; background: #E2E8F0; z-index: 1;"></div>
+                    
+                    <!-- Steps -->
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--green-600); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">✓</div>
+                        <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Drafted</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Approved ? "var(--green-600)" : "var(--amber-500)"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @(activeOrder.Status >= OrderStatus.Approved ? "✓" : "2")
+                        </div>
+                        <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Approved</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Ordered ? "var(--green-600)" : "#CBD5E1"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @(activeOrder.Status >= OrderStatus.Ordered ? "✓" : "3")
+                        </div>
+                        <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Dispatched</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status == OrderStatus.Completed ? "var(--green-600)" : "#CBD5E1"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @(activeOrder.Status == OrderStatus.Completed ? "✓" : "4")
+                        </div>
+                        <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Received</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drawer Content -->
+            <div style="flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+                <!-- Line Items Table -->
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: var(--navy-900); margin-bottom: 8px;">Order Line Items</div>
+                    <div class="table-responsive-org">
+                        <table class="table-org" style="font-size: 12.5px;">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>SKU</th>
+                                    <th>Qty</th>
+                                    <th>Unit Price</th>
+                                    <th style="text-align: right;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var itm in activeOrder.Items)
+                                {
+                                    <tr>
+                                        <td><strong>@itm.ItemName</strong></td>
+                                        <td><span class="sku-badge">@itm.Sku</span></td>
+                                        <td>@itm.Quantity</td>
+                                        <td>₹@itm.UnitCost.ToString("N0")</td>
+                                        <td style="text-align: right; font-weight: 700;">₹@itm.TotalCost.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Order Metadata -->
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                    <div style="font-weight: 700; color: var(--navy-900);">Order Metadata & Signatures</div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                        <span style="color: var(--text-muted);">Requisitioned By:</span>
+                        <strong>@activeOrder.CreatedBy</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                        <span style="color: var(--text-muted);">Digitally Approved By:</span>
+                        <strong>@(activeOrder.ApprovedBy ?? "Pending Administrative Signature")</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                        <span style="color: var(--text-muted);">Notes & Logistics Directives:</span>
+                        <span>@activeOrder.Notes</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drawer Footer -->
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); display: flex; justify-content: space-between;">
+                <button class="btn-org btn-org-secondary" @onclick="CloseDrawer">Close</button>
+                @if (activeOrder.Status == OrderStatus.PendingApproval)
+                {
+                    <button class="btn-org btn-org-primary" @onclick="() => { OrderService.ApproveOrder(activeOrder.Id); CloseDrawer(); }">
+                        <IconSvg Name="check" Size="14" /> Sign & Approve Order
+                    </button>
+                }
+                else if (activeOrder.Status == OrderStatus.Ordered)
+                {
+                    <button class="btn-org btn-org-teal" @onclick="() => { OrderService.ReceiveOrder(activeOrder.Id); CloseDrawer(); }">
+                        <IconSvg Name="boxes" Size="14" /> Check In Delivery
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Create Purchase Order Modal -->
+@if (showCreateModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showCreateModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 600px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="plus" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Generate Purchase Order</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Initiate healthcare inventory procurement</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showCreateModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Vendor / Supplier</label>
+                        <select class="form-select-org" @bind="newOrderSupplier">
+                            @foreach (var s in SupplierService.GetSuppliers())
+                            {
+                                <option value="@s.Name">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Priority Level</label>
+                        <select class="form-select-org" @bind="newOrderPriority">
+                            <option value="Normal">Normal Delivery</option>
+                            <option value="Urgent">Urgent Reorder</option>
+                            <option value="Critical">Critical Clinical Requirement</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Select Product to Reorder</label>
+                    <select class="form-select-org" @bind="selectedCatalogItemId" @bind:after="UpdateItemPrice">
+                        @foreach (var itm in DemoInventoryService.GetItems())
+                        {
+                            <option value="@itm.Id">@itm.Name (@itm.Sku) — Current: @itm.CurrentStock</option>
+                        }
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Quantity Units</label>
+                        <input type="number" class="form-control-org" @bind="newOrderQty" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Unit Price (₹)</label>
+                        <input type="number" class="form-control-org" @bind="newOrderUnitCost" />
+                    </div>
+                </div>
+
+                <div style="background-color: var(--surface-subtle); padding: 12px 16px; border-radius: var(--border-radius-md); display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span style="font-size: 13px; color: var(--text-muted);">Estimated Order Total:</span>
+                    <strong style="font-size: 18px; color: var(--navy-900);">₹@((newOrderQty * newOrderUnitCost).ToString("N0"))</strong>
+                </div>
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Logistics Directives / Notes</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. Deliver to Central Pharmacy Dock B" @bind="newOrderNotes" />
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showCreateModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="HandleCreateOrder">
+                    <IconSvg Name="check" Size="14" /> Issue Requisition
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string selectedStatusTab = "All";
+    private string searchTerm = "";
+    private PurchaseOrder? activeOrder;
+    private bool showCreateModal = false;
+
+    private string newOrderSupplier = "HealthSupply India Pvt Ltd";
+    private string newOrderPriority = "Normal";
+    private string selectedCatalogItemId = "ITM-001";
+    private int newOrderQty = 1000;
+    private decimal newOrderUnitCost = 450m;
+    private string newOrderNotes = "Standard departmental delivery";
+
+    private List<PurchaseOrder> FilteredOrders => OrderService.GetOrders().Where(o =>
+        (selectedStatusTab == "All" || o.Status.ToString() == selectedStatusTab) &&
+        (string.IsNullOrWhiteSpace(searchTerm) || o.PoNumber.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || o.SupplierName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+    ).ToList();
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+        UpdateItemPrice();
+    }
+
+    private void UpdateItemPrice()
+    {
+        var itm = DemoInventoryService.GetItemById(selectedCatalogItemId);
+        if (itm != null)
+        {
+            newOrderUnitCost = itm.UnitCost;
+            newOrderSupplier = itm.SupplierName;
+        }
+    }
+
+    private void OpenOrderDrawer(PurchaseOrder po)
+    {
+        activeOrder = po;
+    }
+
+    private void CloseDrawer()
+    {
+        activeOrder = null;
+    }
+
+    private void HandleCreateOrder()
+    {
+        var itm = DemoInventoryService.GetItemById(selectedCatalogItemId) ?? DemoInventoryService.GetItems().First();
+        var po = new PurchaseOrder
+        {
+            SupplierName = newOrderSupplier,
+            BranchId = TenantService.CurrentBranch.Id,
+            BranchName = TenantService.CurrentBranch.Name,
+            ExpectedDelivery = DateTime.Now.AddDays(3),
+            Priority = newOrderPriority,
+            Notes = newOrderNotes,
+            Items = new List<PurchaseOrderItem>
+            {
+                new PurchaseOrderItem
+                {
+                    ItemId = itm.Id,
+                    ItemName = itm.Name,
+                    Sku = itm.Sku,
+                    Quantity = newOrderQty,
+                    UnitCost = newOrderUnitCost
+                }
+            }
+        };
+
+        OrderService.CreateOrder(po);
+        showCreateModal = false;
+    }
+
+    private string FormatStatusTabName(string status) => status switch
+    {
+        "PendingApproval" => "Pending Approval",
+        "PartiallyReceived" => "Partially Received",
+        _ => status
+    };
+
+    private string GetOrderStatusBadgeClass(OrderStatus status) => status switch
+    {
+        OrderStatus.Approved => "approved",
+        OrderStatus.Completed => "completed",
+        OrderStatus.PendingApproval => "pending",
+        OrderStatus.Ordered => "overstock",
+        OrderStatus.PartiallyReceived => "low-stock",
+        OrderStatus.Cancelled => "critical",
+        _ => "draft"
+    };
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

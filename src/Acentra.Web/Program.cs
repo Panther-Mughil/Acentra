@@ -6,6 +6,7 @@ using Acentra.Infrastructure.TenantData;
 using Acentra.Web.Auth;
 using Acentra.Web.Components;
 using Acentra.Web.Middleware;
+using Acentra.Web.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +22,22 @@ builder.Services.AddTenantResolution();
 builder.Services.AddTenantData(builder.Configuration);
 builder.Services.AddFileStorage(builder.Configuration);
 builder.Services.AddInventory();
+
+// Presentation services for the enterprise UI shell. Every one of these is in-memory, circuit-
+// scoped chrome: none of them is a source of tenant data. The pages that show real rows read
+// IInventoryService (tenant-scoped), and the tenant identity comes from TenantState through
+// TenantStateService — which is why the shell can render without ever inventing a tenant.
+builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<TenantStateService>();
+builder.Services.AddScoped<DemoInventoryService>();
+builder.Services.AddScoped<SupplierService>();
+builder.Services.AddScoped<PurchaseOrderService>();
+builder.Services.AddScoped<DocumentVaultService>();
+builder.Services.AddScoped<AuditLogService>();
+builder.Services.AddScoped<SecurityCenterService>();
+builder.Services.AddScoped<AlertService>();
+builder.Services.AddScoped<AIInsightService>();
+builder.Services.AddScoped<CommandPaletteService>();
 
 // Behind a TLS-terminating proxy, Request.IsHttps is false unless the forwarded headers are
 // honoured, which would otherwise emit the continuity cookie WITHOUT `Secure`. Off by default:

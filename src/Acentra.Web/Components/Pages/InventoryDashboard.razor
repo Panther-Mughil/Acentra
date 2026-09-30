@@ -1,0 +1,591 @@
+@*
+    REQ-005 requirement #9 — the inventory page shows ONLY the selected tenant's inventory.
+
+    The enterprise design is kept, but every row, count and movement on this page comes from the
+    tenant-scoped backend: `IInventoryService`, which opens a short-lived AppDbContext per call and
+    is scoped to whatever tenant the REQ-008 middleware authorized for this circuit. There is no
+    client-suppliable tenant id anywhere in the page: the tenant is the circuit's, and a change to it
+    drops the previous tenant's rows synchronously (TenantScopedRows, the REQ-009 seam).
+*@
+@page "/inventory"
+@attribute [Authorize]
+@inject IInventoryService Inventory
+@inject TenantState Tenant
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>Inventory — Acentra</PageTitle>
+
+@if (!Tenant.IsResolved)
+{
+    <SelectTenantNotice />
+}
+else
+{
+    <div class="page-header-row">
+        <div class="page-title-group">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <span class="status-badge healthy">
+                    <IconSvg Name="boxes" Size="14" /> Live tenant data
+                </span>
+                <span style="font-size: 12px; color: var(--text-light);">
+                    • Tenant <strong>@Tenant.Slug</strong> · these rows belong to this tenant only
+                </span>
+            </div>
+            <h1>Inventory Management</h1>
+            <p>
+                <strong>@_rows.Rows.Count.ToString("N0")</strong> product(s) stored in tenant
+                <strong>@Tenant.Slug</strong>'s own database
+            </p>
+        </div>
+
+        <div class="page-actions-group">
+            <button class="btn-org btn-org-secondary" @onclick="ExportCsv" disabled="@(_rows.Rows.Count == 0)">
+                <IconSvg Name="download" Size="14" /> Export CSV
+            </button>
+            <a class="btn-org btn-org-secondary" href="@ProductsHref">
+                <IconSvg Name="boxes" Size="14" /> Edit / delete
+            </a>
+            <button class="btn-org btn-org-primary" @onclick="() => showAddItemModal = true">
+                <IconSvg Name="plus" Size="14" /> + Add Item
+            </button>
+        </div>
+    </div>
+
+    <!-- Quick Metric Mini-Bar (all four are computed from this tenant's rows) -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--blue-600);">
+            <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Total Products</div>
+            <div style="font-size: 22px; font-weight: 800; color: var(--navy-900); font-family: var(--font-heading);">@_rows.Rows.Count.ToString("N0")</div>
+        </div>
+        <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--green-600);">
+            <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Active</div>
+            <div style="font-size: 22px; font-weight: 800; color: var(--green-700); font-family: var(--font-heading);">@ActiveCount.ToString("N0")</div>
+        </div>
+        <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--text-light);">
+            <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Inactive</div>
+            <div style="font-size: 22px; font-weight: 800; color: var(--text-muted); font-family: var(--font-heading);">@InactiveCount.ToString("N0")</div>
+        </div>
+        <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--amber-500);">
+            <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">With Reorder Level</div>
+            <div style="font-size: 22px; font-weight: 800; color: var(--amber-600); font-family: var(--font-heading);">@WithReorderLevelCount.ToString("N0")</div>
+        </div>
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="alert alert-info" role="alert">@_message</div>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    <!-- Filters & Search Bar -->
+    <div class="org-card" style="padding: 16px 20px; margin-bottom: 20px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; align-items: center;">
+            <div style="position: relative;">
+                <input type="text" class="form-control-org" placeholder="Search product name, SKU, or description..."
+                       @bind="searchTerm" @bind:event="oninput" style="padding-left: 34px;" />
+                <div style="position: absolute; left: 11px; top: 10px; color: var(--text-light);">
+                    <IconSvg Name="search" Size="15" />
+                </div>
+            </div>
+
+            <div>
+                <select class="form-select-org" @bind="selectedStatus">
+                    <option value="">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                </select>
+            </div>
+
+            <div>
+                <select class="form-select-org" @bind="sortBy">
+                    <option value="sku">Sort: SKU</option>
+                    <option value="name">Sort: Name</option>
+                    <option value="price">Sort: Unit price</option>
+                    <option value="reorder">Sort: Reorder level</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Inventory Table -->
+    <div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+        @if (_rows.IsLoading && _rows.Rows.Count == 0)
+        {
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading this tenant's inventory…</div>
+        }
+        else if (_rows.Error is not null)
+        {
+            <div style="padding: 40px; text-align: center; color: var(--red-600);">@_rows.Error</div>
+        }
+        else if (_rows.Rows.Count == 0)
+        {
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+                <IconSvg Name="boxes" Size="32" Class="mb-2" />
+                <div>No products exist for tenant <strong>@Tenant.Slug</strong> yet.</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive-org">
+                <table class="table-org">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>SKU</th>
+                            <th>Unit Price</th>
+                            <th>Reorder Level</th>
+                            <th>Status</th>
+                            <th>Updated (UTC)</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in PagedItems)
+                        {
+                            <tr style="cursor: pointer;" @onclick="() => OpenItemDrawer(item)">
+                                <td>
+                                    <div style="font-weight: 700; color: var(--navy-900);">@item.Name</div>
+                                    <div style="font-size: 11.5px; color: var(--text-muted);">@Truncate(item.Description, 70)</div>
+                                </td>
+                                <td>
+                                    <span class="sku-badge">@item.Sku</span>
+                                </td>
+                                <td>
+                                    <span style="font-weight: 600; color: var(--navy-900);">@item.UnitPrice.ToString("N2")</span>
+                                </td>
+                                <td>
+                                    <span style="font-weight: 600; color: var(--text-muted);">@item.ReorderLevel.ToString("N0")</span>
+                                </td>
+                                <td>
+                                    <span class="status-badge @(item.IsActive ? "healthy" : "draft")">
+                                        <IconSvg Name="@(item.IsActive ? "check" : "close")" Size="12" />
+                                        @(item.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                </td>
+                                <td>
+                                    <span style="font-size: 12px; color: var(--text-muted);">@item.UpdatedUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                                </td>
+                                <td style="text-align: right;" @onclick:stopPropagation>
+                                    <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => OpenItemDrawer(item)" title="View details">
+                                        Details
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="padding: 14px 20px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--text-muted);">
+                <span>Showing <strong>@PagedItems.Count</strong> of <strong>@FilteredItems.Count</strong> product(s)</span>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn-org btn-org-secondary btn-org-sm" disabled="@(currentPage == 1)" @onclick="() => currentPage--">
+                        Previous
+                    </button>
+                    <span style="display: flex; align-items: center; padding: 0 8px; font-weight: 600;">Page @currentPage</span>
+                    <button class="btn-org btn-org-secondary btn-org-sm" disabled="@(currentPage * pageSize >= FilteredItems.Count)" @onclick="() => currentPage++">
+                        Next
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<!-- Item Details Drawer -->
+@if (activeItem is not null)
+{
+    <div class="drawer-backdrop-org" @onclick="CloseItemDrawer">
+        <div class="drawer-panel-org" @onclick:stopPropagation>
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; justify-content: space-between; background: var(--surface-subtle);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="sku-badge">@activeItem.Sku</span>
+                        <span class="status-badge @(activeItem.IsActive ? "healthy" : "draft")">@(activeItem.IsActive ? "Active" : "Inactive")</span>
+                    </div>
+                    <h2 style="font-size: 18px; margin: 0; color: var(--navy-900);">@activeItem.Name</h2>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                        Tenant @Tenant.Slug • product @activeItem.Id
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="CloseItemDrawer" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div style="display: flex; border-bottom: 1px solid var(--border-subtle); padding: 0 20px; background: #FFFFFF; gap: 16px;">
+                @foreach (var tab in new[] { "Overview", "Stock Movements" })
+                {
+                    <button class="btn" style="border: none; background: none; padding: 12px 4px; font-size: 13px; font-weight: 600; color: @(activeDrawerTab == tab ? "var(--blue-600)" : "var(--text-muted)"); border-bottom: 2px solid @(activeDrawerTab == tab ? "var(--blue-600)" : "transparent"); border-radius: 0; cursor: pointer;"
+                            @onclick="() => activeDrawerTab = tab">
+                        @tab
+                    </button>
+                }
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                @if (activeDrawerTab == "Overview")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 16px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                            <span style="color: var(--text-muted);">SKU:</span>
+                            <strong style="font-family: monospace;">@activeItem.Sku</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Unit price:</span>
+                            <strong>@activeItem.UnitPrice.ToString("N2")</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Reorder level:</span>
+                            <strong>@activeItem.ReorderLevel.ToString("N0")</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Created (UTC):</span>
+                            <strong>@activeItem.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Updated (UTC):</span>
+                            <strong>@activeItem.UpdatedUtc.ToString("yyyy-MM-dd HH:mm")</strong>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; color: var(--navy-900); font-size: 14px; margin-bottom: 6px;">Description</div>
+                            <p style="font-size: 12.5px; color: var(--text-main); line-height: 1.5;">@(string.IsNullOrWhiteSpace(activeItem.Description) ? "—" : activeItem.Description)</p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="font-size: 13px; font-weight: 700; color: var(--navy-900);">Stock Movement Timeline</div>
+
+                        @if (_movementsLoading)
+                        {
+                            <div style="color: var(--text-muted); font-size: 12.5px;">Loading movements…</div>
+                        }
+                        else if (_movementError is not null)
+                        {
+                            <div style="color: var(--red-600); font-size: 12.5px;">@_movementError</div>
+                        }
+                        else if (_movements.Count == 0)
+                        {
+                            <div style="color: var(--text-muted); font-size: 12.5px;">No stock movements recorded for this product yet.</div>
+                        }
+                        else
+                        {
+                            <div style="font-size: 12.5px; color: var(--text-muted);">
+                                Net movement: <strong>@NetMovement.ToString("+#;-#;0")</strong> across @_movements.Count movement(s)
+                            </div>
+
+                            @foreach (var movement in _movements)
+                            {
+                                <div style="border-left: 2px solid @(movement.Delta > 0 ? "var(--green-600)" : "var(--blue-600)"); padding-left: 12px; margin-left: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                        <strong style="color: var(--navy-900); font-size: 13px;">@movement.Delta.ToString("+#;-#;0")</strong>
+                                        <span style="font-size: 11px; color: var(--text-light);">@movement.OccurredUtc.ToString("yyyy-MM-dd HH:mm") UTC</span>
+                                    </div>
+                                    <div style="font-size: 12px; color: var(--text-main); margin: 2px 0;">@movement.Reason</div>
+                                    @if (!string.IsNullOrWhiteSpace(movement.Note))
+                                    {
+                                        <div style="font-size: 11px; color: var(--text-muted);">@movement.Note</div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); display: flex; justify-content: space-between;">
+                <button class="btn-org btn-org-secondary" @onclick="CloseItemDrawer">Close</button>
+                <a class="btn-org btn-org-primary" href="@StockHref(activeItem.Id)">
+                    <IconSvg Name="history" Size="14" /> Adjust stock
+                </a>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Item Modal (writes through IInventoryService for the current tenant) -->
+@if (showAddItemModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showAddItemModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 580px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="plus" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Catalog New Inventory Item</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Saved into tenant @Tenant.Slug's database only</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showAddItemModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                @if (_createError is not null)
+                {
+                    <div class="alert alert-danger" role="alert" style="font-size: 12.5px;">@_createError</div>
+                }
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Product Name</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. Sterile Surgical Gauze Sponges 4x4" @bind="newName" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">SKU Code</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. MED-9921" @bind="newSku" />
+                        <div style="font-size: 10.5px; color: var(--text-light); margin-top: 3px;">2–32 chars: A–Z, 0–9 and '-'. Unique per tenant.</div>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Unit Price</label>
+                        <input type="number" class="form-control-org" @bind="newUnitPrice" />
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Reorder Level</label>
+                        <input type="number" class="form-control-org" @bind="newReorderLevel" />
+                    </div>
+                    <div style="display: flex; align-items: flex-end; gap: 8px; padding-bottom: 6px;">
+                        <input type="checkbox" id="new-active" @bind="newIsActive" />
+                        <label for="new-active" style="font-size: 12.5px;">Active</label>
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Description</label>
+                    <textarea class="form-control-org" rows="3" @bind="newDescription"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showAddItemModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="SaveNewItemAsync"
+                        disabled="@(_creating || string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newSku))">
+                    <IconSvg Name="check" Size="14" /> @(_creating ? "Saving…" : "Save Product")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private TenantScopedRows<Product> _rows = default!;
+    private Product? activeItem;
+    private string activeDrawerTab = "Overview";
+
+    private IReadOnlyList<Acentra.Domain.Entities.StockMovement> _movements = [];
+    private bool _movementsLoading;
+    private string? _movementError;
+
+    private string searchTerm = "";
+    private string selectedStatus = "";
+    private string sortBy = "sku";
+
+    private bool showAddItemModal;
+    private bool _creating;
+    private string? _createError;
+
+    private string newSku = "";
+    private string newName = "";
+    private string newDescription = "";
+    private decimal newUnitPrice;
+    private int newReorderLevel;
+    private bool newIsActive = true;
+
+    private int currentPage = 1;
+    private const int pageSize = 10;
+
+    private string? _error;
+    private string? _message;
+
+    private int ActiveCount => _rows.Rows.Count(product => product.IsActive);
+    private int InactiveCount => _rows.Rows.Count(product => !product.IsActive);
+    private int WithReorderLevelCount => _rows.Rows.Count(product => product.ReorderLevel > 0);
+
+    private int NetMovement => _movements.Sum(movement => movement.Delta);
+
+    private List<Product> FilteredItems =>
+    [
+        .. _rows.Rows
+            .Where(product =>
+                (string.IsNullOrWhiteSpace(searchTerm) ||
+                    product.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                    product.Sku.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                    (product.Description ?? string.Empty).Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) &&
+                (string.IsNullOrWhiteSpace(selectedStatus) ||
+                    string.Equals(selectedStatus, product.IsActive ? "Active" : "Inactive", StringComparison.Ordinal)))
+            .OrderBy(product => sortBy switch
+            {
+                "name" => product.Name,
+                "price" => product.UnitPrice.ToString("0000000000.00"),
+                "reorder" => product.ReorderLevel.ToString("0000000000"),
+                _ => product.Sku
+            })
+    ];
+
+    private List<Product> PagedItems =>
+        [.. FilteredItems.Skip((currentPage - 1) * pageSize).Take(pageSize)];
+
+    private string ProductsHref =>
+        $"/inventory/products?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+
+    private string StockHref(Guid productId) =>
+        $"/inventory/products/{productId}/stock?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+
+    protected override void OnInitialized()
+    {
+        // The holder clears the previous tenant's rows synchronously on a tenant change and
+        // re-queries — a Blazor circuit does not re-run OnInitialized when the tenant changes.
+        _rows = new TenantScopedRows<Product>(Tenant, product => product.TenantId, (_, ct) => Inventory.ListProductsAsync(ct));
+        _rows.Updated += OnRowsUpdated;
+
+        Tenant.Changed += OnTenantChanged;
+    }
+
+    protected override async Task OnInitializedAsync() => await _rows.ReloadAsync();
+
+    private void OnRowsUpdated() => InvokeAsync(() =>
+    {
+        _error = _rows.Error;
+        StateHasChanged();
+    });
+
+    private void OnTenantChanged() => InvokeAsync(() =>
+    {
+        // Page-level state belongs to the previous tenant: drop it.
+        activeItem = null;
+        _movements = [];
+        _movementError = null;
+        _movementsLoading = false;
+        _error = null;
+        _message = null;
+        currentPage = 1;
+        StateHasChanged();
+    });
+
+    private async Task OpenItemDrawerAsync(Product item)
+    {
+        activeItem = item;
+        activeDrawerTab = "Overview";
+        _movements = [];
+        _movementError = null;
+        _movementsLoading = true;
+
+        try
+        {
+            var movements = await Inventory.ListMovementsAsync(item.Id);
+
+            // A result for a product that is no longer the open one (or another tenant's) is dropped.
+            if (activeItem?.Id != item.Id)
+            {
+                return;
+            }
+
+            _movements = movements;
+        }
+        catch (Exception exception)
+        {
+            _movementError = exception.Message;
+        }
+        finally
+        {
+            _movementsLoading = false;
+        }
+    }
+
+    private void OpenItemDrawer(Product item) => _ = OpenItemDrawerAsync(item);
+
+    private void CloseItemDrawer()
+    {
+        activeItem = null;
+        _movements = [];
+        _movementError = null;
+    }
+
+    private async Task SaveNewItemAsync()
+    {
+        _createError = null;
+        _creating = true;
+
+        try
+        {
+            await Inventory.CreateProductAsync(
+                new ProductInput(newSku, newName, newDescription, newUnitPrice, newReorderLevel, newIsActive));
+
+            _message = $"Saved product '{newSku.Trim()}' for tenant {Tenant.Slug}.";
+            ToastService.Success("Item Added", $"{newName.Trim()} was cataloged for tenant {Tenant.Slug}.");
+
+            showAddItemModal = false;
+            newSku = "";
+            newName = "";
+            newDescription = "";
+            newUnitPrice = 0m;
+            newReorderLevel = 0;
+            newIsActive = true;
+
+            await _rows.ReloadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            // The service validates (SKU shape, uniqueness, ranges) and its messages are user-facing.
+            _createError = exception.Message;
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("SKU,Name,Description,Unit Price,Reorder Level,Active,Created (UTC),Updated (UTC)");
+
+        foreach (var product in _rows.Rows)
+        {
+            builder.AppendLine(string.Join(',',
+                Quote(product.Sku),
+                Quote(product.Name),
+                Quote(product.Description),
+                product.UnitPrice.ToString("0.00"),
+                product.ReorderLevel,
+                product.IsActive ? "yes" : "no",
+                product.CreatedUtc.ToString("yyyy-MM-dd HH:mm"),
+                product.UpdatedUtc.ToString("yyyy-MM-dd HH:mm")));
+        }
+
+        await JS.InvokeVoidAsync(
+            "orgshield.downloadFile",
+            $"Inventory_{Tenant.Slug}_{DateTime.Now:yyyyMMdd}.csv",
+            builder.ToString(),
+            "text/csv");
+
+        ToastService.Success("Inventory Exported", "CSV catalog generated from this tenant's rows.");
+    }
+
+    private static string Quote(string? value) =>
+        $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
+
+    private static string Truncate(string? value, int max) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "—"
+            : value.Length <= max ? value : value[..max] + "…";
+
+    public void Dispose()
+    {
+        _rows.Updated -= OnRowsUpdated;
+        _rows.Dispose();
+        Tenant.Changed -= OnTenantChanged;
+    }
+}

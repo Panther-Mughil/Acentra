@@ -103,7 +103,7 @@ else
 
 @code {
     private TenantScopedRows<Product> _product = default!;
-    private TenantScopedRows<StockMovement> _movements = default!;
+    private TenantScopedRows<Acentra.Domain.Entities.StockMovement> _movements = default!;
     private AdjustmentModel _adjustment = new();
     private int? _quantity;
     private bool _saving;
@@ -117,7 +117,7 @@ else
     {
         // Both holders drop the previous tenant's rows synchronously when the tenant changes.
         _product = new TenantScopedRows<Product>(Tenant, product => product.TenantId, LoadProductAsync);
-        _movements = new TenantScopedRows<StockMovement>(Tenant, movement => movement.TenantId, LoadMovementsAsync);
+        _movements = new TenantScopedRows<Acentra.Domain.Entities.StockMovement>(Tenant, movement => movement.TenantId, LoadMovementsAsync);
 
         _product.Updated += OnRowsUpdated;
         _movements.Updated += OnRowsUpdated;
@@ -138,7 +138,7 @@ else
         return product is null ? [] : [product];
     }
 
-    private Task<IReadOnlyList<StockMovement>> LoadMovementsAsync(Guid tenantId, CancellationToken ct) =>
+    private Task<IReadOnlyList<Acentra.Domain.Entities.StockMovement>> LoadMovementsAsync(Guid tenantId, CancellationToken ct) =>
         Inventory.ListMovementsAsync(Id, ct);
 
     private void OnRowsUpdated() => InvokeAsync(StateHasChanged);
