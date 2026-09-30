@@ -8,7 +8,7 @@
 
 Architecture §5.5 states isolation is a **testable property** and must be tested explicitly. This plan implements that matrix against the real pipeline via `WebApplicationFactory`, plus unit tests for the logic that can be tested cheaply.
 
-The matrix from §5.5, made concrete:
+The matrix from §5.5, made concrete. **Status codes below reflect REQ-008's hardening** — uniform `403` for every "you cannot use this tenant" cause, and `400` reserved for "no hint supplied at all". Do not assert the pre-REQ-008 codes.
 
 1. Seed tenants A and B with identically named SKUs.
 2. Query as A → only A's rows.
@@ -16,6 +16,7 @@ The matrix from §5.5, made concrete:
 4. Request tenant B with A's credentials → `403`.
 5. Omit the tenant hint → `400`/`403` and zero rows.
 6. Switch tenant mid-session → previously loaded rows disappear.
+7. Revoke membership or suspend the tenant while a circuit is **open** → that circuit's tenant clears (REQ-009).
 
 ## 2. Scope
 
@@ -55,13 +56,18 @@ The matrix from §5.5, made concrete:
 | B1 | Read isolation | As A, `GET /api/products` returns only A's rows, including A's `SKU-001` and not B's |
 | B2 | Cross-tenant write by id | As A, `PUT /api/products/{B's id}` → 404/403; B's row unchanged after |
 | B3 | Cross-tenant delete | As A, `DELETE /api/products/{B's id}` → 404/403; B's row still present |
-| B4 | Foreign tenant request | A's credentials + `X-Tenant: b` → 403 |
-| B5 | Missing hint | No `X-Tenant` → 400/403 and zero rows |
-| B6 | Unknown tenant | `X-Tenant: nope` → 400 |
+| B4 | Foreign tenant request | A's credentials + `X-Tenant: b` → **uniform 403** (REQ-008) |
+| B5 | Missing hint | No `X-Tenant`, authenticated, tenant-scoped path → **400** |
+| B6 | Unknown tenant | `X-Tenant: nope`, authenticated → **uniform 403**, byte-identical to B4 and B6b |
+| B6b | Suspended tenant | `X-Tenant: <suspended>`, authenticated → byte-identical body to B4/B6 |
+| B6c | Unauthenticated probing | Any slug, any hint, unauthenticated → one **byte-identical** response; no tenant lookup performed |
 | B7 | Write-path stamping | Insert with empty `TenantId` → stamped; insert with a foreign `TenantId` → throws |
 | B8 | Filter + physical split | Querying A's database cannot return B's rows even if the tenant id is forced |
 | B9 | Storage isolation | Key from tenant A cannot be opened while acting as B; `..` rejected |
 | B10 | `IgnoreQueryFilters` audit | A test/static scan asserts no production call site of `IgnoreQueryFilters()` |
+| B11 | No enumeration oracle | Bodies for unknown vs suspended vs non-member are compared byte-for-byte, and never contain the slug |
+| B12 | Authorization expiry | Revoked membership / suspended tenant clears an **already-open** circuit's `TenantState` (REQ-009) |
+| B13 | Allowlisted path is inert | A foreign/unknown hint on an allowlisted path is ignored — no 403, cookie not cleared |
 
 **Unit tests:** `TenantStampInterceptor` (insert stamp, foreign-id throw, modify/delete throw), `StorageKeyBuilder` (shape, sanitisation, traversal), product validation rules, `TenantDatabaseName` sanitiser.
 
