@@ -25,6 +25,26 @@
                 <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
             </NavLink>
         </div>
+
+        @if (Tenant.IsResolved)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="@ProductsHref">
+                    <span class="bi bi-box-seam-fill-nav-menu" aria-hidden="true"></span> Products
+                </NavLink>
+            </div>
+        }
     </nav>
 </div>
+
+@code {
+    [Inject]
+    private TenantState Tenant { get; set; } = default!;
+
+    // Only shown for a resolved tenant — an unresolved circuit has no hint to navigate with and a
+    // tenant-scoped URL without one fails closed upstream — and always carries the hint so the
+    // selection is explicit rather than implied by the continuity cookie.
+    private string ProductsHref =>
+        $"/inventory/products?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+}
 

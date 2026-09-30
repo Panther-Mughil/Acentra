@@ -1,0 +1,322 @@
+@page "/inventory/products/new"
+@page "/inventory/products/{Id:guid}"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@inject IInventoryService Inventory
+@inject IFileStorage FileStorage
+@inject ITenantDbContextFactory ContextFactory
+@inject TenantState Tenant
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsNew ? "New product" : "Edit product") — Acentra</PageTitle>
+
+<h1>@(IsNew ? "New product" : "Edit product")</h1>
+
+@if (!Tenant.IsResolved)
+{
+    <SelectTenantNotice />
+}
+else
+{
+    <p class="text-muted">Tenant <strong>@Tenant.Slug</strong></p>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    @if (_info is not null)
+    {
+        <div class="alert alert-success" role="alert">
+            @_info
+            @if (_downloadUrl is not null)
+            {
+                <a href="@_downloadUrl" target="_blank" rel="noopener">Download the uploaded file</a>
+            }
+        </div>
+    }
+
+    @if (_notFound)
+    {
+        <p>No product with that id exists for this tenant.</p>
+    }
+    else if (_rows.IsLoading && !_formLoaded)
+    {
+        <p>Loading…</p>
+    }
+    else
+    {
+        <EditForm Model="_form" FormName="product-edit" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="mb-3">
+                <label class="form-label" for="sku">SKU</label>
+                <InputText id="sku" class="form-control" @bind-Value="_form.Sku" />
+                <ValidationMessage For="() => _form.Sku" />
+                <div class="form-text">2–32 characters: A–Z, 0–9 and '-'. Unique within this tenant.</div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="name">Name</label>
+                <InputText id="name" class="form-control" @bind-Value="_form.Name" />
+                <ValidationMessage For="() => _form.Name" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="description">Description</label>
+                <InputTextArea id="description" class="form-control" @bind-Value="_form.Description" />
+                <ValidationMessage For="() => _form.Description" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="price">Unit price</label>
+                <InputNumber id="price" class="form-control" @bind-Value="_form.UnitPrice" />
+                <ValidationMessage For="() => _form.UnitPrice" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="reorder">Reorder level</label>
+                <InputNumber id="reorder" class="form-control" @bind-Value="_form.ReorderLevel" />
+                <ValidationMessage For="() => _form.ReorderLevel" />
+            </div>
+
+            <div class="form-check mb-3">
+                <InputCheckbox id="active" class="form-check-input" @bind-Value="_form.IsActive" />
+                <label class="form-check-label" for="active">Active</label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="file">Attachment (optional)</label>
+                <InputFile id="file" class="form-control" OnChange="OnFileSelected" />
+                <div class="form-text">
+                    Stored under <code>tenants/&lt;tenantId&gt;/…</code> for this tenant only. 10 MB maximum.
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_saving">Save</button>
+            <a class="btn btn-outline-secondary" href="@ListHref">Cancel</a>
+        </EditForm>
+    }
+}
+
+@code {
+    /// <summary>Largest upload accepted; checked before anything touches storage.</summary>
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+
+    private TenantScopedRows<Product> _rows = default!;
+    private ProductFormModel _form = new();
+    private IBrowserFile? _file;
+    private Guid _loadedProductId;
+    private bool _formLoaded;
+    private bool _saving;
+    private bool _notFound;
+    private string? _error;
+    private string? _info;
+    private string? _downloadUrl;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private bool IsNew => Id == Guid.Empty;
+
+    protected override void OnInitialized()
+    {
+        // Same invalidation contract as the list page: the tenant cannot change under a loaded row.
+        _rows = new TenantScopedRows<Product>(Tenant, product => product.TenantId, LoadOneAsync);
+        _rows.Updated += OnRowsUpdated;
+
+        Tenant.Changed += OnTenantChanged;
+    }
+
+    protected override async Task OnInitializedAsync() => await _rows.ReloadAsync();
+
+    private Task<IReadOnlyList<Product>> LoadOneAsync(Guid tenantId, CancellationToken ct) =>
+        IsNew
+            ? Task.FromResult<IReadOnlyList<Product>>([])
+            : LoadExistingAsync(ct);
+
+    private async Task<IReadOnlyList<Product>> LoadExistingAsync(CancellationToken ct)
+    {
+        var product = await Inventory.GetProductAsync(Id, ct);
+
+        return product is null ? [] : [product];
+    }
+
+    private void OnRowsUpdated() => InvokeAsync(() =>
+    {
+        var product = _rows.Rows.FirstOrDefault();
+
+        _notFound = !IsNew && product is null;
+        _error = _rows.Error;
+
+        if (product is not null && _loadedProductId != product.Id)
+        {
+            _form = ProductFormModel.From(product);
+            _loadedProductId = product.Id;
+        }
+
+        if (_loadedProductId != Guid.Empty || IsNew)
+        {
+            _formLoaded = true;
+        }
+
+        StateHasChanged();
+    });
+
+    private void OnTenantChanged() => InvokeAsync(() =>
+    {
+        // The loaded product and the half-filled form belong to the previous tenant: drop both.
+        _loadedProductId = Guid.Empty;
+        _formLoaded = false;
+        _form = new ProductFormModel();
+        _file = null;
+        _error = null;
+        _info = null;
+        _downloadUrl = null;
+        _notFound = false;
+        StateHasChanged();
+    });
+
+    private void OnFileSelected(InputFileChangeEventArgs args) => _file = args.File;
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        _info = null;
+        _downloadUrl = null;
+
+        try
+        {
+            var input = _form.ToInput();
+
+            var product = IsNew
+                ? await Inventory.CreateProductAsync(input)
+                : await Inventory.UpdateProductAsync(Id, input);
+
+            _loadedProductId = product.Id;
+            _formLoaded = true;
+
+            if (_file is null)
+            {
+                Navigation.NavigateTo(ListHref);
+                return;
+            }
+
+            _info = await UploadAsync(product);
+        }
+        catch (ArgumentException exception)
+        {
+            // Validation from the service layer (format, uniqueness, ranges) — a message, not a stack.
+            _error = exception.Message;
+        }
+        catch (KeyNotFoundException)
+        {
+            _error = "That product no longer exists for this tenant.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the object through <see cref="IFileStorage"/> and records a tenant-scoped
+    /// <c>TenantFile</c> row. Only the key is persisted; the bytes never touch the database.
+    /// </summary>
+    private async Task<string> UploadAsync(Product product)
+    {
+        var file = _file!;
+        var fileName = Path.GetFileName(file.Name);
+        var extension = Path.GetExtension(fileName);
+
+        // Rejected before storage: a disallowed extension or an oversized file never reaches it.
+        if (extension.Length > 0 && StorageKeyBuilder.SanitizeExtension(extension).Length == 0)
+        {
+            throw new ArgumentException($"Files of type '{extension}' are not allowed.");
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            throw new ArgumentException("Attachments must be 10 MB or smaller.");
+        }
+
+        await using var content = file.OpenReadStream(MaxUploadBytes);
+        var key = await FileStorage.SaveAsync(Tenant.TenantId, content, fileName, CancellationToken.None);
+
+        await using (var db = ContextFactory.Create())
+        {
+            db.Files.Add(new TenantFile
+            {
+                Id = Guid.NewGuid(),
+                Key = key,
+                FileName = fileName.Length > 512 ? fileName[..512] : fileName,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                    ? "application/octet-stream"
+                    : file.ContentType[..Math.Min(file.ContentType.Length, 255)],
+                SizeBytes = file.Size,
+                UploadedUtc = DateTime.UtcNow
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        _downloadUrl = await FileStorage.GetDownloadUrlAsync(
+            Tenant.TenantId, key, TimeSpan.FromMinutes(5), CancellationToken.None);
+
+        return $"Saved '{product.Sku}' and uploaded '{fileName}'.";
+    }
+
+    private string ListHref =>
+        $"/inventory/products?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+
+    public void Dispose()
+    {
+        _rows.Updated -= OnRowsUpdated;
+        _rows.Dispose();
+        Tenant.Changed -= OnTenantChanged;
+    }
+
+    /// <summary>
+    /// The page's editable shape. It carries the same rules as <see cref="ProductInput"/> so the user
+    /// sees them inline; <c>InventoryService</c> re-validates, and the SKU uniqueness pre-check lives
+    /// there (it needs the database).
+    /// </summary>
+    public sealed class ProductFormModel
+    {
+        [Required(ErrorMessage = "A SKU is required.")]
+        [RegularExpression(InventoryService.SkuFormat,
+            ErrorMessage = "A SKU must be 2–32 characters using only A–Z, 0–9 and '-'.")]
+        public string Sku { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "A name is required.")]
+        [StringLength(InventoryService.NameMaxLength)]
+        public string Name { get; set; } = string.Empty;
+
+        [StringLength(InventoryService.DescriptionMaxLength)]
+        public string? Description { get; set; }
+
+        [Range(typeof(decimal), "0", "79228162514264337593543950335",
+            ErrorMessage = "The unit price must be zero or greater.")]
+        public decimal UnitPrice { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "The reorder level must be zero or greater.")]
+        public int ReorderLevel { get; set; }
+
+        public bool IsActive { get; set; } = true;
+
+        public static ProductFormModel From(Product product) => new()
+        {
+            Sku = product.Sku,
+            Name = product.Name,
+            Description = product.Description,
+            UnitPrice = product.UnitPrice,
+            ReorderLevel = product.ReorderLevel,
+            IsActive = product.IsActive
+        };
+
+        public ProductInput ToInput() =>
+            new(Sku.Trim(), Name.Trim(), Description, UnitPrice, ReorderLevel, IsActive);
+    }
+}

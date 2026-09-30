@@ -63,4 +63,6 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+app.MapInventoryFileDownloads();
+
 app.Run();

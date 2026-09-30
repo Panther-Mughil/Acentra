@@ -1,0 +1,215 @@
+@page "/inventory/products/{Id:guid}/stock"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@inject IInventoryService Inventory
+@inject TenantState Tenant
+
+<PageTitle>Adjust stock — Acentra</PageTitle>
+
+<h1>Adjust stock</h1>
+
+@if (!Tenant.IsResolved)
+{
+    <SelectTenantNotice />
+}
+else
+{
+    <p class="text-muted">Tenant <strong>@Tenant.Slug</strong></p>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    @if (_message is not null)
+    {
+        <div class="alert alert-success" role="alert">@_message</div>
+    }
+
+    @if (_product.Rows.Count == 0)
+    {
+        <p>No product with that id exists for this tenant.</p>
+    }
+    else
+    {
+        var product = _product.Rows[0];
+
+        <p>
+            <strong>@product.Sku</strong> — @product.Name
+            @if (_quantity is not null)
+            {
+                <span>· quantity after the last adjustment: <strong>@_quantity</strong></span>
+            }
+        </p>
+
+        <EditForm Model="_adjustment" FormName="stock-adjust" OnValidSubmit="AdjustAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="mb-3">
+                <label class="form-label" for="delta">Adjustment (use a negative number to remove stock)</label>
+                <InputNumber id="delta" class="form-control" @bind-Value="_adjustment.Delta" />
+                <div class="form-text">Must not be zero.</div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="reason">Reason</label>
+                <InputText id="reason" class="form-control" @bind-Value="_adjustment.Reason" />
+                <ValidationMessage For="() => _adjustment.Reason" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="note">Note</label>
+                <InputTextArea id="note" class="form-control" @bind-Value="_adjustment.Note" />
+                <ValidationMessage For="() => _adjustment.Note" />
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_saving">Apply adjustment</button>
+            <a class="btn btn-outline-secondary" href="@ListHref">Back to products</a>
+        </EditForm>
+    }
+
+    <h2 class="h5 mt-4">Stock movements</h2>
+
+    @if (_movements.Rows.Count == 0)
+    {
+        <p>No stock movements recorded for this product yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th scope="col">When (UTC)</th>
+                    <th scope="col">Delta</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var movement in _movements.Rows)
+                {
+                    <tr>
+                        <td>@movement.OccurredUtc.ToString("u")</td>
+                        <td>@movement.Delta.ToString("+#;-#;0")</td>
+                        <td>@movement.Reason</td>
+                        <td>@movement.Note</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private TenantScopedRows<Product> _product = default!;
+    private TenantScopedRows<StockMovement> _movements = default!;
+    private AdjustmentModel _adjustment = new();
+    private int? _quantity;
+    private bool _saving;
+    private string? _error;
+    private string? _message;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Both holders drop the previous tenant's rows synchronously when the tenant changes.
+        _product = new TenantScopedRows<Product>(Tenant, product => product.TenantId, LoadProductAsync);
+        _movements = new TenantScopedRows<StockMovement>(Tenant, movement => movement.TenantId, LoadMovementsAsync);
+
+        _product.Updated += OnRowsUpdated;
+        _movements.Updated += OnRowsUpdated;
+
+        Tenant.Changed += OnTenantChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await _product.ReloadAsync();
+        await _movements.ReloadAsync();
+    }
+
+    private async Task<IReadOnlyList<Product>> LoadProductAsync(Guid tenantId, CancellationToken ct)
+    {
+        var product = await Inventory.GetProductAsync(Id, ct);
+
+        return product is null ? [] : [product];
+    }
+
+    private Task<IReadOnlyList<StockMovement>> LoadMovementsAsync(Guid tenantId, CancellationToken ct) =>
+        Inventory.ListMovementsAsync(Id, ct);
+
+    private void OnRowsUpdated() => InvokeAsync(StateHasChanged);
+
+    private void OnTenantChanged() => InvokeAsync(() =>
+    {
+        // The level and the form belong to the previous tenant's product.
+        _quantity = null;
+        _adjustment = new AdjustmentModel();
+        _error = null;
+        _message = null;
+        StateHasChanged();
+    });
+
+    private async Task AdjustAsync()
+    {
+        _error = null;
+        _message = null;
+
+        if (_adjustment.Delta is null || _adjustment.Delta.Value == 0)
+        {
+            _error = "Enter a non-zero adjustment.";
+            return;
+        }
+
+        _saving = true;
+
+        try
+        {
+            var delta = _adjustment.Delta.Value;
+
+            // One call: the movement row and the level update are committed together.
+            var level = await Inventory.AdjustStockAsync(Id, delta, _adjustment.Reason, _adjustment.Note);
+
+            _quantity = level.Quantity;
+            _message = $"Recorded an adjustment of {delta:+#;-#;0}. Quantity is now {level.Quantity}.";
+            _adjustment = new AdjustmentModel();
+        }
+        catch (Exception exception) when (exception is ArgumentException or KeyNotFoundException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+
+        await _movements.ReloadAsync();
+    }
+
+    private string ListHref =>
+        $"/inventory/products?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+
+    public void Dispose()
+    {
+        _product.Updated -= OnRowsUpdated;
+        _product.Dispose();
+        _movements.Updated -= OnRowsUpdated;
+        _movements.Dispose();
+        Tenant.Changed -= OnTenantChanged;
+    }
+
+    public sealed class AdjustmentModel
+    {
+        public int? Delta { get; set; }
+
+        [Required(ErrorMessage = "A reason is required.")]
+        [StringLength(InventoryService.ReasonMaxLength)]
+        public string Reason { get; set; } = "manual adjustment";
+
+        [StringLength(InventoryService.DescriptionMaxLength)]
+        public string? Note { get; set; }
+    }
+}

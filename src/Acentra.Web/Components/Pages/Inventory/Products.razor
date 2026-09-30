@@ -1,0 +1,157 @@
+@page "/inventory/products"
+@attribute [Authorize]
+@inject IInventoryService Inventory
+@inject TenantState Tenant
+@inject NavigationManager Navigation
+
+<PageTitle>Products — Acentra</PageTitle>
+
+<h1>Products</h1>
+
+@if (!Tenant.IsResolved)
+{
+    <SelectTenantNotice />
+}
+else
+{
+    <p class="text-muted">
+        Tenant <strong>@Tenant.Slug</strong> — these rows belong to this tenant only.
+    </p>
+
+    @if (_message is not null)
+    {
+        <div class="alert alert-info" role="alert">@_message</div>
+    }
+
+    <p>
+        <a class="btn btn-primary btn-sm" href="@Link("/inventory/products/new")">New product</a>
+    </p>
+
+    @if (_rows.Error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_rows.Error</div>
+    }
+    else if (_rows.IsLoading && _rows.Rows.Count == 0)
+    {
+        <p>Loading products…</p>
+    }
+    else if (_rows.Rows.Count == 0)
+    {
+        <p>No products exist for this tenant yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Unit price</th>
+                    <th scope="col">Reorder level</th>
+                    <th scope="col">Active</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var product in _rows.Rows)
+                {
+                    <tr>
+                        <td>@product.Sku</td>
+                        <td>@product.Name</td>
+                        <td>@product.UnitPrice.ToString("0.00")</td>
+                        <td>@product.ReorderLevel</td>
+                        <td>@(product.IsActive ? "yes" : "no")</td>
+                        <td>
+                            <a href="@Link($"/inventory/products/{product.Id}")">Edit</a>
+                            <span>·</span>
+                            <a href="@Link($"/inventory/products/{product.Id}/stock")">Stock</a>
+                            <span>·</span>
+                            @if (_pendingDeleteId == product.Id)
+                            {
+                                <button type="button" class="btn btn-danger btn-sm"
+                                        @onclick="() => DeleteAsync(product.Id)">
+                                    Confirm delete
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                        @onclick="CancelDelete">
+                                    Cancel
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        @onclick="() => _pendingDeleteId = product.Id">
+                                    Delete
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private TenantScopedRows<Product> _rows = default!;
+    private Guid? _pendingDeleteId;
+    private string? _message;
+
+    protected override void OnInitialized()
+    {
+        // The rows holder subscribes to TenantState.Changed, clears the rows synchronously and
+        // re-queries — a circuit does NOT re-run OnInitializedAsync when the tenant changes.
+        _rows = new TenantScopedRows<Product>(Tenant, product => product.TenantId, (_, ct) => Inventory.ListProductsAsync(ct));
+        _rows.Updated += OnRowsUpdated;
+
+        // Page-level state (the confirmation and the banner) is cleared here rather than in the
+        // holder, because it belongs to the interaction, not to the rows.
+        Tenant.Changed += OnTenantChanged;
+    }
+
+    protected override async Task OnInitializedAsync() => await _rows.ReloadAsync();
+
+    private void OnRowsUpdated() => InvokeAsync(StateHasChanged);
+
+    private void OnTenantChanged() => InvokeAsync(() =>
+    {
+        _pendingDeleteId = null;
+        _message = null;
+        StateHasChanged();
+    });
+
+    private void CancelDelete() => _pendingDeleteId = null;
+
+    private async Task DeleteAsync(Guid productId)
+    {
+        _pendingDeleteId = null;
+        _message = null;
+
+        try
+        {
+            await Inventory.DeleteProductAsync(productId);
+            _message = "Product deleted.";
+        }
+        catch (KeyNotFoundException)
+        {
+            _message = "That product no longer exists for this tenant.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            _message = exception.Message;
+        }
+
+        await _rows.ReloadAsync();
+    }
+
+    /// <summary>Carries the tenant hint so a link never depends on the continuity cookie alone.</summary>
+    private string Link(string path) =>
+        $"{path}?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";
+
+    public void Dispose()
+    {
+        _rows.Updated -= OnRowsUpdated;
+        _rows.Dispose();
+        Tenant.Changed -= OnTenantChanged;
+    }
+}

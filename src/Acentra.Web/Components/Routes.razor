@@ -1,6 +1,19 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-    <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
-    </Found>
-</Router>
+@*
+    Inventory routes carry [Authorize]; AuthorizeRouteView is what enforces them during rendering,
+    and it needs the cascading Task<AuthenticationState> that CascadingAuthenticationState supplies.
+    Everything else routes exactly as before.
+*@
+<CascadingAuthenticationState>
+    <Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+                <NotAuthorized>
+                    <h1>Sign in required</h1>
+                    <p>You must be signed in to view this page.</p>
+                    <p><a href="Account/Login">Log in</a></p>
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+</CascadingAuthenticationState>

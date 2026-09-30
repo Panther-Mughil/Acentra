@@ -1,0 +1,130 @@
+@*
+    REQ-005 requirement #8 — the tenant switcher (architecture §7).
+
+    It lists ONLY the tenants the signed-in user is a member of (ITenantRegistry.FindForUserAsync),
+    mutates the circuit-scoped TenantState so every page drops its rows, and then persists the choice
+    through the REQ-008 query hint (?tenant=<slug>). The middleware re-authorizes that hint, sets the
+    continuity cookie, and the reloaded circuit is seeded from it — so no JavaScript and no
+    localStorage are involved, and the selection survives a reload.
+
+    Fail closed: a tenant the user is no longer a member of is cleared, never silently replaced by
+    another one.
+*@
+@inject ITenantRegistry TenantRegistry
+@inject TenantState Tenant
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="tenant-switcher py-1">
+    <label class="form-label mb-1 small text-uppercase text-muted" for="tenant-switcher">Tenant</label>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-warning py-1 px-2 small mb-1" role="alert">@_error</div>
+    }
+
+    @if (!_loaded)
+    {
+        <div class="small text-muted">Loading tenants…</div>
+    }
+    else if (_tenants.Count == 0)
+    {
+        <div class="small text-muted">No tenants are available for this account.</div>
+    }
+    else
+    {
+        <select id="tenant-switcher"
+                class="form-select form-select-sm"
+                @bind="_selectedSlug"
+                @bind:after="SwitchAsync">
+            <option value="">— select a tenant —</option>
+            @foreach (var tenant in _tenants)
+            {
+                <option value="@tenant.Slug">@tenant.Name (@tenant.Slug)</option>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<TenantDescriptor> _tenants = [];
+    private string _selectedSlug = string.Empty;
+    private string? _error;
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Keep the select in step with the circuit's tenant (a REQ-009 expiry clears it).
+        Tenant.Changed += OnTenantChanged;
+        _selectedSlug = Tenant.Slug;
+
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var rawUserId = authenticationState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (!Guid.TryParse(rawUserId, out var userId))
+        {
+            _error = "Sign in to choose a tenant.";
+            return;
+        }
+
+        _tenants = await TenantRegistry.FindForUserAsync(userId, CancellationToken.None);
+        _loaded = true;
+
+        // Membership is the authority; the circuit's tenant is only a cached decision. If it is no
+        // longer in the list, drop it and force a re-selection — never fall back to another tenant.
+        if (Tenant.IsResolved && !_tenants.Any(candidate => candidate.Id == Tenant.TenantId))
+        {
+            Tenant.Clear();
+            _error = "Your access to the selected tenant is no longer available. Choose another tenant.";
+        }
+    }
+
+    private async Task SwitchAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedSlug))
+        {
+            // The "— select a tenant —" placeholder: never a fallback, never an implicit choice.
+            return;
+        }
+
+        // The DOM value is not authority either: only a tenant from the registry list may be selected.
+        var tenant = _tenants.FirstOrDefault(candidate => candidate.Slug == _selectedSlug);
+
+        if (tenant is null)
+        {
+            _error = "That tenant is not available to this account.";
+            _selectedSlug = Tenant.Slug;
+            return;
+        }
+
+        // 1. Move the circuit *first*. Every page's TenantScopedRows clears synchronously on this,
+        //    so the previous tenant's rows stop rendering before anything else can happen.
+        Tenant.Set(tenant.Id, tenant.Slug);
+
+        // 2. Persist it with a plain navigation carrying the query hint. The middleware resolves it,
+        //    sets the continuity cookie, and the freshly loaded circuit is seeded from the cookie —
+        //    so the selection survives a reload without any JavaScript. forceLoad is deliberate: a
+        //    full reload guarantees the browser and the circuit agree on the tenant.
+        Navigation.NavigateTo(TargetFor(tenant.Slug), forceLoad: true);
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>Current page with the tenant hint replaced (any previous hint is dropped).</summary>
+    private string TargetFor(string slug)
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var separator = relative.IndexOf('?');
+        var path = separator >= 0 ? relative[..separator] : relative;
+
+        return QueryHelpers.AddQueryString("/" + path, TenantResolutionConstants.QueryKey, slug);
+    }
+
+    private void OnTenantChanged() => InvokeAsync(() =>
+    {
+        _selectedSlug = Tenant.Slug;
+        StateHasChanged();
+    });
+
+    public void Dispose() => Tenant.Changed -= OnTenantChanged;
+}
