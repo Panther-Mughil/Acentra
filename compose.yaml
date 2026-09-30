@@ -1,0 +1,37 @@
+---
+# Local development stack for Acentra.
+#
+#   podman-compose up -d       start Postgres
+#   podman-compose ps          check health
+#   podman-compose down        stop (data survives in the named volume)
+#   podman-compose down -v     stop and WIPE the database
+#
+# Images are fully qualified (docker.io/...) because podman does not apply
+# docker.io short-name resolution by default.
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    container_name: acentra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-acentra}
+      POSTGRES_USER: ${POSTGRES_USER:-acentra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acentra_dev_password}
+    ports:
+      # Host port is configurable so a native Postgres on 5432 doesn't collide.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - acentra-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-acentra} -d ${POSTGRES_DB:-acentra}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  acentra-pgdata:

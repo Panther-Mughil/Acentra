@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Acentra.Domain/Acentra.Domain.csproj" />
+    <Project Path="src/Acentra.Infrastructure/Acentra.Infrastructure.csproj" />
+    <Project Path="src/Acentra.Web/Acentra.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Acentra.IntegrationTests/Acentra.IntegrationTests.csproj" />
+    <Project Path="tests/Acentra.UnitTests/Acentra.UnitTests.csproj" />
+  </Folder>
+</Solution>
