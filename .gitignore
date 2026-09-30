@@ -1,0 +1,41 @@
+# .NET
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+.next/
+out/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# General
+target/
+*.class
+*.exe
+*.o
+*.obj
+*.dll
+*.pdb
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
