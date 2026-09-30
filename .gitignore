@@ -57,6 +57,9 @@ Thumbs.db
 # Local file storage
 storage/
 
+# pi-lens probe logs (written into the working tree by the pi-lens extension)
+.pi-lens-probe-home/
+
 # Local env / compose overrides
 .env
 .env.*

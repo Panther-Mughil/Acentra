@@ -34,7 +34,11 @@ services:
       start_period: 10s
 
   minio:
-    image: docker.io/minio/minio
+    # Upstream MinIO has withdrawn its Docker Hub images (every tag returns
+    # "requested access to the resource is denied"; quay.io/minio/minio returns
+    # "unauthorized"), so this is the pgsty community mirror of the same MinIO
+    # server. Kept deliberately: decision #2 is MinIO, not a look-alike product.
+    image: docker.io/pgsty/minio:latest
     container_name: acentra-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"

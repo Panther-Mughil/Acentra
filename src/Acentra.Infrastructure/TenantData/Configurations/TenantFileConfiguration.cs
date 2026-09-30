@@ -22,6 +22,16 @@ public static class TenantFileConfiguration
         builder.HasIndex(f => f.TenantId)
             .HasDatabaseName("ix_tenant_files_tenant_id");
 
+        // REQ-004 §5: a key is unique per tenant — never globally, so the same key under a different
+        // tenant stays legal (and column order keeps the index usable for tenant-only lookups).
+        builder.HasIndex(f => new { f.TenantId, f.Key })
+            .IsUnique()
+            .HasDatabaseName("ux_tenant_files_tenant_key");
+
+        // Supports the per-tenant "most recent uploads" listing without a sort.
+        builder.HasIndex(f => new { f.TenantId, f.UploadedUtc })
+            .HasDatabaseName("ix_tenant_files_tenant_uploaded");
+
         builder.Property(f => f.Key)
             .IsRequired()
             .HasMaxLength(512);
