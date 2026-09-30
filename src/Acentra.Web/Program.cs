@@ -1,7 +1,9 @@
+using Acentra.Domain.Abstractions;
 using Acentra.Infrastructure.ControlPlane;
 using Acentra.Infrastructure.Inventory;
 using Acentra.Infrastructure.Storage;
 using Acentra.Infrastructure.TenantData;
+using Acentra.Web.Auth;
 using Acentra.Web.Components;
 using Acentra.Web.Middleware;
 
@@ -12,6 +14,9 @@ builder.Services.AddRazorComponents()
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddControlPlane(builder.Configuration);
+builder.Services.AddScoped<TenantState>();
+builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantState>());
+builder.Services.AddTenantResolution();
 builder.Services.AddTenantData(builder.Configuration);
 builder.Services.AddFileStorage(builder.Configuration);
 builder.Services.AddInventory();

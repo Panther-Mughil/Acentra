@@ -1,0 +1,106 @@
+@page "/Account/Register"
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Acentra.Infrastructure.ControlPlane
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<AppUser> UserManager
+@inject SignInManager<AppUser> SignInManager
+@inject NavigationManager NavigationManager
+
+<PageTitle>Register — Acentra</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h1>Register</h1>
+
+        @if (Errors.Count > 0)
+        {
+            <div class="alert alert-danger" role="alert">
+                <ul class="mb-0">
+                    @foreach (var error in Errors)
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        <EditForm Model="Input" FormName="register" OnValidSubmit="RegisterUser" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="mb-3">
+                <label class="form-label" for="email">Email</label>
+                <InputText id="email" class="form-control" @bind-Value="Input.Email" />
+                <ValidationMessage For="() => Input.Email" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="password">Password</label>
+                <InputText id="password" type="password" class="form-control" @bind-Value="Input.Password" />
+                <ValidationMessage For="() => Input.Password" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="confirm">Confirm password</label>
+                <InputText id="confirm" type="password" class="form-control" @bind-Value="Input.ConfirmPassword" />
+                <ValidationMessage For="() => Input.ConfirmPassword" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Register</button>
+        </EditForm>
+
+        <p class="mt-3">
+            <a href="Account/Login">Already have an account? Log in</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "register")]
+    private InputModel Input { get; set; } = default!;
+
+    private List<string> Errors { get; } = [];
+
+    protected override void OnInitialized() => Input ??= new InputModel();
+
+    private async Task RegisterUser()
+    {
+        var user = new AppUser
+        {
+            UserName = Input.Email,
+            Email = Input.Email,
+            EmailConfirmed = true
+        };
+
+        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        if (!result.Succeeded)
+        {
+            Errors.AddRange(result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        // New accounts have no memberships yet: they can sign in, but every tenant-scoped
+        // request still fails closed until an administrator grants a membership.
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        NavigationManager.NavigateTo("/");
+    }
+
+    public sealed class InputModel
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required, StringLength(100, MinimumLength = 8)]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
+
+        [DataType(DataType.Password)]
+        [Compare(nameof(Password), ErrorMessage = "The password and confirmation password do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

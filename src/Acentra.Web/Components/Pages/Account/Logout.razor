@@ -1,0 +1,37 @@
+@page "/Account/Logout"
+@attribute [ExcludeFromInteractiveRouting]
+@using Acentra.Infrastructure.ControlPlane
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<AppUser> SignInManager
+@inject NavigationManager NavigationManager
+
+<PageTitle>Log out — Acentra</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h1>Log out</h1>
+        <p>Sign out of Acentra.</p>
+
+        <EditForm Model="Model" FormName="logout" OnValidSubmit="LogoutUser" method="post">
+            <button type="submit" class="btn btn-primary">Log out</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    // Static SSR: the sign-out is a POST so it is CSRF-protected and performs a real
+    // HTTP round-trip; EditForm emits the form-name and antiforgery fields for us.
+    [SupplyParameterFromForm(FormName = "logout")]
+    private EmptyModel Model { get; set; } = default!;
+
+    protected override void OnInitialized() => Model ??= new EmptyModel();
+
+    private async Task LogoutUser()
+    {
+        await SignInManager.SignOutAsync();
+        NavigationManager.NavigateTo("/");
+    }
+
+    public sealed class EmptyModel;
+}
