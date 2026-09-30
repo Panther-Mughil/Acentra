@@ -44,6 +44,53 @@ public static class TenantAgnosticPaths
         "/manifest.webmanifest"
     ];
 
+    /// <summary>
+    /// Static-asset extensions that are public by definition and never carry tenant data. This
+    /// covers assets emitted by <c>MapStaticAssets</c>, whose fingerprinted URLs
+    /// (<c>/app.4j8wku364b.css</c>) are served from a virtual route and therefore have no file on
+    /// disk for the web-root probe below to find.
+    /// </summary>
+    public static readonly IReadOnlyList<string> StaticAssetExtensions =
+    [
+        ".css",
+        ".js",
+        ".mjs",
+        ".map",
+        ".json",
+        ".webmanifest",
+        ".wasm",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".ico",
+        ".bmp",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".otf",
+        ".txt",
+        ".br",
+        ".gz"
+    ];
+
+    private static readonly HashSet<string> StaticAssetExtensionSet =
+        new(StaticAssetExtensions, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Application prefixes that serve tenant-uploaded content and therefore can end in any
+    /// asset-looking extension. These ARE tenant data, so the static-asset extension allowance
+    /// must never apply to them: they stay tenant-scoped and fail closed upstream. The only such
+    /// route today is <c>/files/{**key}</c> (<c>InventoryFileEndpoints.Pattern</c>).
+    /// </summary>
+    private static readonly IReadOnlyList<string> TenantScopedAssetLookalikePrefixes =
+    [
+        "/files"
+    ];
+
     public static bool IsTenantAgnostic(PathString path, IWebHostEnvironment environment)
     {
         var value = path.HasValue ? path.Value! : "/";
@@ -69,12 +116,46 @@ public static class TenantAgnosticPaths
             }
         }
 
+        // Fingerprinted assets are served from a *virtual* route by MapStaticAssets: the URL
+        // exists in the endpoint manifest but there is no corresponding file in wwwroot, so the
+        // web-root probe below cannot see them. Static asset types are public by definition and
+        // never carry tenant data, so a known asset extension is tenant-agnostic. The extension
+        // is taken from the path segment only, ignoring any query string or fragment. Tenant
+        // content that merely looks like an asset (the /files upload route) is excluded: those
+        // paths end in the uploaded file's own extension and are tenant data.
+        if (!MatchesAnyPrefix(value, TenantScopedAssetLookalikePrefixes) && HasStaticAssetExtension(value))
+        {
+            return true;
+        }
+
         // A request that maps to a real static file (favicon, css, js, fonts, wasm, …) is not
         // tenant-scoped. Checked through the file provider rather than a extension allowlist so
         // nothing can slip through on an unanticipated extension. A *directory* is never a file:
         // `Exists` alone is also true for directories, which would make a whole tree agnostic.
         var file = environment.WebRootFileProvider?.GetFileInfo(value);
         return file is { Exists: true, IsDirectory: false };
+    }
+
+    private static bool HasStaticAssetExtension(string value)
+    {
+        var query = value.IndexOfAny(['?', '#']);
+        var pathOnly = query >= 0 ? value[..query] : value;
+        var extension = Path.GetExtension(pathOnly);
+
+        return extension.Length > 0 && StaticAssetExtensionSet.Contains(extension);
+    }
+
+    private static bool MatchesAnyPrefix(string path, IReadOnlyList<string> prefixes)
+    {
+        foreach (var prefix in prefixes)
+        {
+            if (MatchesPrefix(path, prefix))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool MatchesPrefix(string path, string prefix) =>
