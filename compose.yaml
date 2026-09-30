@@ -13,6 +13,15 @@ services:
     image: docker.io/library/postgres:17-alpine
     container_name: acentra-postgres
     restart: unless-stopped
+    # Headroom for the integration suite: it provisions a GUID-suffixed
+    # throwaway database per tenant, and every distinct database name gets
+    # its own Npgsql connection pool (default Maximum Pool Size 100). With
+    # several pools open in parallel the stock max_connections=100 is
+    # exhausted ("sorry, too many clients already"), so the server ceiling
+    # is raised here; the test-side pools are capped in
+    # tests/Acentra.IntegrationTests/TestDatabase.cs. Data lives in the named
+    # volume, so recreating the container loses nothing.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-acentra}
       POSTGRES_USER: ${POSTGRES_USER:-acentra}
@@ -56,6 +65,52 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  # The app itself, so `podman-compose up -d` is the whole stack.
+  #
+  # Development environment is deliberate: it activates the startup seeder
+  # (tenants acme/globex + demo user) and tenant-database provisioning, which
+  # makes a fresh container self-sufficient. appsettings*.json still point at
+  # localhost, which is wrong in-container, so every host/endpoint is overridden
+  # here via environment variables.
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: localhost/acentra-web:dev
+    container_name: acentra-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Service names resolve on the compose network (acentra-postgres /
+      # acentra-minio are the container names registered in DNS).
+      # yamllint disable-line rule:line-length
+      ConnectionStrings__ControlPlane: Host=acentra-postgres;Port=5432;Database=${POSTGRES_DB:-acentra};Username=${POSTGRES_USER:-acentra};Password=${POSTGRES_PASSWORD:-acentra_dev_password}
+      # yamllint disable-line rule:line-length
+      ConnectionStrings__TenantTemplate: Host=acentra-postgres;Port=5432;Database={0};Username=${POSTGRES_USER:-acentra};Password=${POSTGRES_PASSWORD:-acentra_dev_password}
+      Storage__Provider: S3
+      Storage__Endpoint: http://acentra-minio:9000
+      Storage__AccessKey: ${MINIO_ROOT_USER:-acentra}
+      Storage__SecretKey: ${MINIO_ROOT_PASSWORD:-acentra_dev_password}
+      Storage__UseSsl: "false"
+      Storage__Bucket: acentra-tenant-files
+    ports:
+      # Host 8080; the host-run demo instance stays on 5200 and is untouched.
+      - "${WEB_PORT:-8080}:8080"
+    healthcheck:
+      # No curl/wget in the aspnet runtime image, so probe the listening socket
+      # with bash's /dev/tcp.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
 
 volumes:
   acentra-pgdata:

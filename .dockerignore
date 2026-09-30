@@ -1,0 +1,54 @@
+# Keep the build context small: only sources + restore metadata are needed.
+# The Dockerfile copies Directory.Packages.props, Acentra.slnx and src/ explicitly.
+
+# VCS / editor
+.git
+.gitignore
+.vs
+.idea
+.vscode
+*.user
+*.suo
+
+# Build output (rebuilt inside the image)
+**/bin/
+**/obj/
+**/out/
+artifacts/
+
+# Local storage / data volumes
+storage/
+*.db
+*.sqlite
+
+# Tests are not needed to publish the web project
+tests/
+
+# Local secrets / env overrides
+.env
+.env.*
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.p12
+
+# Compose / docs noise
+compose.yaml
+docs/
+README.md
+
+# Test results and coverage
+[Tt]est[Rr]esult*/
+*.trx
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Tooling logs
+.pi-lens-probe-home/
