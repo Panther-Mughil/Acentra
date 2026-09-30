@@ -37,4 +37,24 @@ public static class TenantResolutionConstants
 
     /// <summary>Content type of the uniform denial body.</summary>
     public const string AccessDeniedContentType = "text/plain; charset=utf-8";
+
+    /// <summary>
+    /// Configuration key for the circuit re-authorization interval (REQ-009). Bound at
+    /// <c>Tenant:RevalidationInterval</c>; a <see cref="System.TimeSpan"/> string such as
+    /// <c>00:05:00</c>.
+    /// </summary>
+    public const string RevalidationIntervalKey = "Tenant:RevalidationInterval";
+
+    /// <summary>
+    /// Default bound on how long a circuit's tenant authorization may go unchecked. A Blazor
+    /// circuit makes no per-interaction HTTP request, so this interval is the *only* thing that
+    /// re-checks membership and tenant status — it is a staleness bound, not instant revocation.
+    /// </summary>
+    public static readonly TimeSpan DefaultRevalidationInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Positive floor the configured interval is clamped to. A zero or negative value must never
+    /// silently disable the guarantee, so it is raised to this instead.
+    /// </summary>
+    public static readonly TimeSpan MinimumRevalidationInterval = TimeSpan.FromSeconds(30);
 }
