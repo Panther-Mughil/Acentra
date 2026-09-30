@@ -1,0 +1,644 @@
+@page "/inventory"
+@inject InventoryService InventoryService
+@inject TenantStateService TenantService
+@inject SupplierService SupplierService
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge healthy">
+                <IconSvg Name="boxes" Size="14" /> Real-time Warehouse Sync
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Scoped to @TenantService.CurrentBranch.Name</span>
+        </div>
+        <h1>Inventory Management</h1>
+        <p><strong>@TenantService.CurrentBranch.TotalItemsCount.ToString("N0")</strong> total catalog items across @TenantService.CurrentTenant.Name</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-secondary" @onclick="SimulateImport">
+            <IconSvg Name="upload" Size="14" /> Import CSV
+        </button>
+        <button class="btn-org btn-org-secondary" @onclick="ExportCsv">
+            <IconSvg Name="download" Size="14" /> Export CSV
+        </button>
+        <button class="btn-org btn-org-primary" @onclick="() => showAddItemModal = true">
+            <IconSvg Name="plus" Size="14" /> + Add Item
+        </button>
+    </div>
+</div>
+
+<!-- Quick Metric Mini-Bar -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+    <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--blue-600);">
+        <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Total Items</div>
+        <div style="font-size: 22px; font-weight: 800; color: var(--navy-900); font-family: var(--font-heading);">@TenantService.CurrentBranch.TotalItemsCount.ToString("N0")</div>
+    </div>
+    <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--amber-500);">
+        <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Low Stock Warnings</div>
+        <div style="font-size: 22px; font-weight: 800; color: var(--amber-600); font-family: var(--font-heading);">27</div>
+    </div>
+    <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--red-600);">
+        <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Critical Depletion</div>
+        <div style="font-size: 22px; font-weight: 800; color: var(--red-600); font-family: var(--font-heading);">3</div>
+    </div>
+    <div class="org-card" style="padding: 14px 18px; border-left: 3px solid var(--green-600);">
+        <div style="font-size: 11.5px; color: var(--text-muted); text-transform: uppercase;">Stock Valuation</div>
+        <div style="font-size: 22px; font-weight: 800; color: var(--green-700); font-family: var(--font-heading);">₹4.82 Cr</div>
+    </div>
+</div>
+
+<!-- Filters & Search Bar -->
+<div class="org-card" style="padding: 16px 20px; margin-bottom: 20px;">
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; align-items: center;">
+        <!-- Search -->
+        <div style="position: relative;">
+            <input type="text" class="form-control-org" placeholder="Search product name, SKU, or batch..."
+                   @bind="searchTerm" @bind:event="oninput" style="padding-left: 34px;" />
+            <div style="position: absolute; left: 11px; top: 10px; color: var(--text-light);">
+                <IconSvg Name="search" Size="15" />
+            </div>
+        </div>
+
+        <!-- Category Filter -->
+        <div>
+            <select class="form-select-org" @bind="selectedCategory">
+                <option value="">All Categories</option>
+                <option value="PPE & Safety">PPE & Safety</option>
+                <option value="Pharmaceuticals">Pharmaceuticals</option>
+                <option value="Surgical Equipment">Surgical Equipment</option>
+                <option value="IV Fluids & Infusions">IV Fluids & Infusions</option>
+                <option value="Laboratory & Diagnostics">Laboratory & Diagnostics</option>
+                <option value="Medical Supplies">Medical Supplies</option>
+            </select>
+        </div>
+
+        <!-- Branch Filter -->
+        <div>
+            <select class="form-select-org" @bind="selectedBranch">
+                <option value="">All Branches</option>
+                @foreach (var br in TenantService.CurrentTenant.Branches)
+                {
+                    <option value="@br.Name">@br.City - @br.Code</option>
+                }
+            </select>
+        </div>
+
+        <!-- Stock Status Filter -->
+        <div>
+            <select class="form-select-org" @bind="selectedStatus">
+                <option value="">All Stock Status</option>
+                <option value="Healthy">Healthy</option>
+                <option value="LowStock">Low Stock</option>
+                <option value="Critical">Critical</option>
+                <option value="Overstock">Overstock</option>
+            </select>
+        </div>
+
+        <!-- Supplier Filter -->
+        <div>
+            <select class="form-select-org" @bind="selectedSupplier">
+                <option value="">All Suppliers</option>
+                @foreach (var sup in SupplierService.GetSuppliers())
+                {
+                    <option value="@sup.Name">@sup.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (selectedItemIds.Count > 0)
+    {
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; background-color: var(--blue-50); padding: 8px 14px; border-radius: var(--border-radius-md);">
+            <span style="font-size: 13px; font-weight: 600; color: var(--blue-700);">
+                @selectedItemIds.Count item(s) selected
+            </span>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-org btn-org-primary btn-org-sm" @onclick="BulkReorder">
+                    <IconSvg Name="orders" Size="13" /> Bulk Reorder
+                </button>
+                <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => selectedItemIds.Clear()">
+                    Clear Selection
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Main Inventory Table -->
+<div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th style="width: 40px; text-align: center;">
+                        <input type="checkbox" @onchange="ToggleSelectAll" checked="@(selectedItemIds.Count > 0 && selectedItemIds.Count == FilteredItems.Count)" />
+                    </th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Category</th>
+                    <th>Storage Location</th>
+                    <th>Stock Level</th>
+                    <th>Reorder Level</th>
+                    <th>Status</th>
+                    <th>Last Updated</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (FilteredItems.Count == 0)
+                {
+                    <tr>
+                        <td colspan="10" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <IconSvg Name="boxes" Size="32" Class="mb-2" />
+                            <div>No inventory products match your filter criteria.</div>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var item in PagedItems)
+                    {
+                        var isChecked = selectedItemIds.Contains(item.Id);
+                        <tr style="cursor: pointer;" @onclick="() => OpenItemDrawer(item)">
+                            <td style="text-align: center;" @onclick:stopPropagation>
+                                <input type="checkbox" checked="@isChecked" @onchange="() => ToggleSelectItem(item.Id)" />
+                            </td>
+                            <td>
+                                <div style="font-weight: 700; color: var(--navy-900);">@item.Name</div>
+                                <div style="font-size: 11.5px; color: var(--text-muted);">@item.SupplierName</div>
+                            </td>
+                            <td>
+                                <span class="sku-badge">@item.Sku</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--text-main);">@item.Category</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12px; color: var(--text-muted);">@item.StorageLocation</span>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: baseline; gap: 4px;">
+                                    <strong style="font-size: 14px; color: var(--navy-900);">@item.CurrentStock.ToString("N0")</strong>
+                                    <span style="font-size: 11.5px; color: var(--text-light);">@item.Unit</span>
+                                </div>
+                                <!-- Progress bar for stock -->
+                                <div style="width: 100px; height: 5px; background: #E2E8F0; border-radius: 9999px; overflow: hidden; margin-top: 4px;">
+                                    @{
+                                        var pct = Math.Min(100, (int)((double)item.CurrentStock / item.OptimalStock * 100));
+                                        var barColor = item.Status == StockStatus.Critical ? "#EF4444" :
+                                                       item.Status == StockStatus.LowStock ? "#F59E0B" : "#10B981";
+                                    }
+                                    <div style="width: @(pct)%; height: 100%; background-color: @barColor;"></div>
+                                </div>
+                            </td>
+                            <td>
+                                <span style="font-weight: 600; color: var(--text-muted);">@item.ReorderLevel.ToString("N0")</span>
+                            </td>
+                            <td>
+                                <span class="status-badge @GetStatusClass(item.Status)">
+                                    @if (item.Status == StockStatus.LowStock || item.Status == StockStatus.Critical)
+                                    {
+                                        <IconSvg Name="warning" Size="12" />
+                                    }
+                                    else if (item.Status == StockStatus.Healthy)
+                                    {
+                                        <IconSvg Name="check" Size="12" />
+                                    }
+                                    @item.Status
+                                </span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12px; color: var(--text-muted);">
+                                    @GetTimeAgo(item.LastUpdated)
+                                </span>
+                            </td>
+                            <td style="text-align: right;" @onclick:stopPropagation>
+                                <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => OpenItemDrawer(item)" title="View Details">
+                                    Details
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination footer -->
+    <div style="padding: 14px 20px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--text-muted);">
+        <span>Showing <strong>@PagedItems.Count</strong> of <strong>@FilteredItems.Count</strong> inventory items</span>
+        <div style="display: flex; gap: 6px;">
+            <button class="btn-org btn-org-secondary btn-org-sm" disabled="@(currentPage == 1)" @onclick="() => currentPage--">
+                Previous
+            </button>
+            <span style="display: flex; align-items: center; padding: 0 8px; font-weight: 600;">Page @currentPage</span>
+            <button class="btn-org btn-org-secondary btn-org-sm" disabled="@(currentPage * pageSize >= FilteredItems.Count)" @onclick="() => currentPage++">
+                Next
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Item Details Drawer (Section 16) -->
+@if (activeItem != null)
+{
+    <div class="drawer-backdrop-org" @onclick="CloseItemDrawer">
+        <div class="drawer-panel-org" @onclick:stopPropagation>
+            <!-- Drawer Header -->
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; justify-content: space-between; background: var(--surface-subtle);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="sku-badge">@activeItem.Sku</span>
+                        <span class="status-badge @GetStatusClass(activeItem.Status)">@activeItem.Status</span>
+                    </div>
+                    <h2 style="font-size: 18px; margin: 0; color: var(--navy-900);">@activeItem.Name</h2>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                        @activeItem.Category • @activeItem.StorageLocation
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="CloseItemDrawer" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <!-- Drawer Tabs -->
+            <div style="display: flex; border-bottom: 1px solid var(--border-subtle); padding: 0 20px; background: #FFFFFF; gap: 16px;">
+                @foreach (var tab in new[] { "Overview", "Stock History", "Suppliers", "Documents", "Audit Trail" })
+                {
+                    <button class="btn" style="border: none; background: none; padding: 12px 4px; font-size: 13px; font-weight: 600; color: @(activeDrawerTab == tab ? "var(--blue-600)" : "var(--text-muted)"); border-bottom: 2px solid @(activeDrawerTab == tab ? "var(--blue-600)" : "transparent"); border-radius: 0; cursor: pointer;"
+                            @onclick="() => activeDrawerTab = tab">
+                        @tab
+                    </button>
+                }
+            </div>
+
+            <!-- Drawer Body -->
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                @if (activeDrawerTab == "Overview")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                        <!-- Stock Level Metric Cards -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                            <div style="background-color: var(--surface-subtle); padding: 14px; border-radius: var(--border-radius-md); border: 1px solid var(--border-subtle);">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Current Stock</div>
+                                <div style="font-size: 22px; font-weight: 800; color: var(--navy-900);">@activeItem.CurrentStock.ToString("N0")</div>
+                                <div style="font-size: 11px; color: var(--text-light);">@activeItem.Unit</div>
+                            </div>
+                            <div style="background-color: var(--surface-subtle); padding: 14px; border-radius: var(--border-radius-md); border: 1px solid var(--border-subtle);">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Reorder Level</div>
+                                <div style="font-size: 22px; font-weight: 800; color: var(--amber-600);">@activeItem.ReorderLevel.ToString("N0")</div>
+                                <div style="font-size: 11px; color: var(--text-light);">Minimum buffer</div>
+                            </div>
+                            <div style="background-color: var(--surface-subtle); padding: 14px; border-radius: var(--border-radius-md); border: 1px solid var(--border-subtle);">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Optimal Target</div>
+                                <div style="font-size: 22px; font-weight: 800; color: var(--green-700);">@activeItem.OptimalStock.ToString("N0")</div>
+                                <div style="font-size: 11px; color: var(--text-light);">Target capacity</div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Adjustment Action -->
+                        <div style="background: var(--blue-50); border: 1px solid rgba(23, 105, 170, 0.2); border-radius: var(--border-radius-md); padding: 14px;">
+                            <div style="font-weight: 700; font-size: 13px; color: var(--blue-700); margin-bottom: 8px;">Quick Stock Adjustment</div>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="number" class="form-control-org" placeholder="Quantity (+ or -)" @bind="adjustQty" style="width: 140px;" />
+                                <input type="text" class="form-control-org" placeholder="Reason (e.g. Ward Dispense, Inward Delivery)" @bind="adjustReason" />
+                                <button class="btn-org btn-org-primary btn-org-sm" @onclick="HandleStockAdjustment">Apply</button>
+                            </div>
+                        </div>
+
+                        <!-- Specification Details -->
+                        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                            <div style="font-weight: 700; color: var(--navy-900); font-size: 14px;">Product Specifications</div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Batch Number:</span>
+                                <strong style="font-family: monospace;">@activeItem.BatchNumber</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Expiry Date:</span>
+                                <strong>@activeItem.ExpiryDate.ToString("MMM dd, yyyy")</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Storage Condition:</span>
+                                <strong>@activeItem.TemperatureRequirement</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Unit Procurement Cost:</span>
+                                <strong>₹@activeItem.UnitCost.ToString("N2")</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Estimated Stock Valuation:</span>
+                                <strong style="color: var(--green-700);">₹@((activeItem.CurrentStock * activeItem.UnitCost).ToString("N0"))</strong>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="font-weight: 700; color: var(--navy-900); font-size: 14px; margin-bottom: 6px;">Description</div>
+                            <p style="font-size: 12.5px; color: var(--text-main); line-height: 1.5;">@activeItem.Description</p>
+                        </div>
+                    </div>
+                }
+                else if (activeDrawerTab == "Stock History")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="font-size: 13px; font-weight: 700; color: var(--navy-900);">Stock Movement Timeline</div>
+                        @foreach (var mov in InventoryService.GetMovementsForItem(activeItem.Id))
+                        {
+                            <div style="border-left: 2px solid @(mov.Quantity > 0 ? "var(--green-600)" : "var(--blue-600)"); padding-left: 12px; margin-left: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                    <strong style="color: var(--navy-900); font-size: 13px;">@mov.MovementType: @(mov.Quantity > 0 ? $"+{mov.Quantity}" : mov.Quantity.ToString()) @activeItem.Unit</strong>
+                                    <span style="font-size: 11px; color: var(--text-light);">@mov.Timestamp.ToString("MMM dd, HH:mm")</span>
+                                </div>
+                                <div style="font-size: 12px; color: var(--text-main); margin: 2px 0;">@mov.Reason</div>
+                                <div style="font-size: 11px; color: var(--text-muted);">Ref: @mov.ReferenceNumber • By: @mov.PerformedBy</div>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (activeDrawerTab == "Suppliers")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="font-size: 13px; font-weight: 700; color: var(--navy-900);">Primary Contracted Supplier</div>
+                        <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong style="font-size: 14px; color: var(--navy-900);">@activeItem.SupplierName</strong>
+                                <span class="status-badge healthy">● Active Vendor</span>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px;">
+                                <span>Standard Lead Time: <strong>3.2 Days</strong></span>
+                                <span>On-Time Delivery Rate: <strong>96.4%</strong></span>
+                                <span>Contract Unit Price: <strong>₹@activeItem.UnitCost.ToString("N0")</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="padding: 30px; text-align: center; color: var(--text-muted);">
+                        <IconSvg Name="documents" Size="32" Class="mb-2" />
+                        <div>No additional documents attached to this SKU.</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Drawer Footer -->
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); display: flex; justify-content: space-between;">
+                <button class="btn-org btn-org-secondary" @onclick="CloseItemDrawer">Close</button>
+                <button class="btn-org btn-org-primary" @onclick="TriggerReorderFromDrawer">
+                    <IconSvg Name="orders" Size="14" /> Create Reorder PO
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Item Modal -->
+@if (showAddItemModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showAddItemModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 580px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="plus" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Catalog New Inventory Item</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Add item to @TenantService.CurrentBranch.Name inventory</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showAddItemModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Product Name</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. Sterile Surgical Gauze Sponges 4x4" @bind="newItem.Name" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">SKU Code</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. MED-9921" @bind="newItem.Sku" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Category</label>
+                        <select class="form-select-org" @bind="newItem.Category">
+                            <option value="PPE & Safety">PPE & Safety</option>
+                            <option value="Pharmaceuticals">Pharmaceuticals</option>
+                            <option value="Surgical Equipment">Surgical Equipment</option>
+                            <option value="IV Fluids & Infusions">IV Fluids & Infusions</option>
+                            <option value="Laboratory & Diagnostics">Laboratory & Diagnostics</option>
+                            <option value="Medical Supplies">Medical Supplies</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Initial Stock</label>
+                        <input type="number" class="form-control-org" @bind="newItem.CurrentStock" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Reorder Level</label>
+                        <input type="number" class="form-control-org" @bind="newItem.ReorderLevel" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Unit Price (₹)</label>
+                        <input type="number" class="form-control-org" @bind="newItem.UnitCost" />
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Storage Location</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. Shelf C-12, Pharmacy Vault" @bind="newItem.StorageLocation" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Supplier</label>
+                        <select class="form-select-org" @bind="newItem.SupplierName">
+                            @foreach (var s in SupplierService.GetSuppliers())
+                            {
+                                <option value="@s.Name">@s.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showAddItemModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="SaveNewItem" disabled="@(string.IsNullOrWhiteSpace(newItem.Name))">
+                    <IconSvg Name="check" Size="14" /> Save Product
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "item")]
+    public string? QueryItemId { get; set; }
+
+    private string searchTerm = "";
+    private string selectedCategory = "";
+    private string selectedBranch = "";
+    private string selectedStatus = "";
+    private string selectedSupplier = "";
+
+    private HashSet<string> selectedItemIds = new();
+    private InventoryItem? activeItem;
+    private string activeDrawerTab = "Overview";
+    private int adjustQty = 0;
+    private string adjustReason = "";
+
+    private bool showAddItemModal = false;
+    private InventoryItem newItem = new()
+    {
+        Category = "Medical Supplies",
+        Unit = "Boxes",
+        CurrentStock = 100,
+        ReorderLevel = 50,
+        OptimalStock = 300,
+        UnitCost = 450m,
+        StorageLocation = "Main Pharmacy Bay 1",
+        SupplierName = "HealthSupply India Pvt Ltd"
+    };
+
+    private int currentPage = 1;
+    private const int pageSize = 10;
+
+    private List<InventoryItem> FilteredItems => InventoryService.GetItems().Where(i =>
+        (string.IsNullOrWhiteSpace(searchTerm) || i.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || i.Sku.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || i.BatchNumber.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrWhiteSpace(selectedCategory) || i.Category == selectedCategory) &&
+        (string.IsNullOrWhiteSpace(selectedBranch) || i.BranchName == selectedBranch) &&
+        (string.IsNullOrWhiteSpace(selectedStatus) || i.Status.ToString() == selectedStatus) &&
+        (string.IsNullOrWhiteSpace(selectedSupplier) || i.SupplierName == selectedSupplier)
+    ).ToList();
+
+    private List<InventoryItem> PagedItems => FilteredItems.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(QueryItemId))
+        {
+            var itm = InventoryService.GetItemById(QueryItemId);
+            if (itm != null) OpenItemDrawer(itm);
+        }
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            selectedItemIds = FilteredItems.Select(i => i.Id).ToHashSet();
+        }
+        else
+        {
+            selectedItemIds.Clear();
+        }
+    }
+
+    private void ToggleSelectItem(string id)
+    {
+        if (selectedItemIds.Contains(id)) selectedItemIds.Remove(id);
+        else selectedItemIds.Add(id);
+    }
+
+    private void OpenItemDrawer(InventoryItem item)
+    {
+        activeItem = item;
+        activeDrawerTab = "Overview";
+        adjustQty = 0;
+        adjustReason = "";
+    }
+
+    private void CloseItemDrawer()
+    {
+        activeItem = null;
+    }
+
+    private void HandleStockAdjustment()
+    {
+        if (activeItem != null && adjustQty != 0)
+        {
+            InventoryService.AdjustStock(activeItem.Id, adjustQty, string.IsNullOrWhiteSpace(adjustReason) ? "Manual Adjustment" : adjustReason);
+            adjustQty = 0;
+            adjustReason = "";
+        }
+    }
+
+    private void TriggerReorderFromDrawer()
+    {
+        if (activeItem != null)
+        {
+            ToastService.Info("Reorder Drafted", $"Purchase order pre-filled for {activeItem.Name}.");
+            CloseItemDrawer();
+            Nav.NavigateTo("/orders");
+        }
+    }
+
+    private void SaveNewItem()
+    {
+        if (string.IsNullOrWhiteSpace(newItem.Name)) return;
+
+        newItem.BranchId = TenantService.CurrentBranch.Id;
+        newItem.BranchName = TenantService.CurrentBranch.Name;
+        newItem.BatchNumber = $"BATCH-2026-{Random.Shared.Next(100, 999)}";
+        newItem.ExpiryDate = DateTime.Now.AddMonths(18);
+
+        InventoryService.AddItem(newItem);
+        showAddItemModal = false;
+        newItem = new InventoryItem { Category = "Medical Supplies", Unit = "Boxes", CurrentStock = 100, ReorderLevel = 50, OptimalStock = 300, UnitCost = 450m };
+    }
+
+    private async Task ExportCsv()
+    {
+        var csv = InventoryService.GenerateCsvExport();
+        await JS.InvokeVoidAsync("orgshield.downloadFile", $"Inventory_{TenantService.CurrentTenant.Code}_{DateTime.Now:yyyyMMdd}.csv", csv, "text/csv");
+        ToastService.Success("Inventory Exported", "CSV catalog generated and downloaded.");
+    }
+
+    private void SimulateImport()
+    {
+        ToastService.Info("Import Ready", "Simulated catalog sync: 12,840 item records up to date.");
+    }
+
+    private void BulkReorder()
+    {
+        ToastService.Success("Bulk Order Initiated", $"Drafted consolidated purchase order for {selectedItemIds.Count} items.");
+        selectedItemIds.Clear();
+        Nav.NavigateTo("/orders");
+    }
+
+    private string GetStatusClass(StockStatus status) => status switch
+    {
+        StockStatus.Healthy => "healthy",
+        StockStatus.LowStock => "low-stock",
+        StockStatus.Critical => "critical",
+        StockStatus.Overstock => "overstock",
+        _ => "draft"
+    };
+
+    private string GetTimeAgo(DateTime dt)
+    {
+        var span = DateTime.Now - dt;
+        if (span.TotalMinutes < 5) return "2 min ago";
+        if (span.TotalHours < 1) return $"{Math.Max(1, (int)span.TotalMinutes)} min ago";
+        if (span.TotalDays < 1) return $"{Math.Max(1, (int)span.TotalHours)}h ago";
+        return $"{Math.Max(1, (int)span.TotalDays)}d ago";
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

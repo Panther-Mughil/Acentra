@@ -1,0 +1,340 @@
+@page "/documents"
+@inject DocumentVaultService DocService
+@inject TenantStateService TenantService
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="vault" Size="14" /> KMS Envelope Encryption (AES-256 GCM)
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Storage Partition: s3://orgshield-@TenantService.CurrentTenant.Id.ToLowerInvariant()-vault/</span>
+        </div>
+        <h1>Secure Document Vault</h1>
+        <p>Encrypted clinical compliance certificates, supplier invoices, regulatory audit packs, and procurement contracts.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-primary" @onclick="() => showUploadModal = true">
+            <IconSvg Name="upload" Size="14" /> + Upload Encrypted Document
+        </button>
+    </div>
+</div>
+
+<!-- Folder Style Cards (Section 19) -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--blue-600); @(selectedCategory == "Invoices" ? "border-color: var(--blue-600); background-color: var(--blue-50);" : "")"
+         @onclick='() => selectedCategory = (selectedCategory == "Invoices" ? "" : "Invoices")'>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 24px;">📁</span>
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Invoices</div>
+                <div style="font-size: 12px; color: var(--text-muted);">124 documents</div>
+            </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-light); text-align: right;">1.4 GB encrypted</div>
+    </div>
+
+    <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--teal-600); @(selectedCategory == "Purchase Orders" ? "border-color: var(--teal-600); background-color: var(--teal-50);" : "")"
+         @onclick='() => selectedCategory = (selectedCategory == "Purchase Orders" ? "" : "Purchase Orders")'>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 24px;">📁</span>
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Purchase Orders</div>
+                <div style="font-size: 12px; color: var(--text-muted);">82 documents</div>
+            </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-light); text-align: right;">890 MB encrypted</div>
+    </div>
+
+    <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--amber-500); @(selectedCategory == "Compliance" ? "border-color: var(--amber-500); background-color: var(--amber-50);" : "")"
+         @onclick='() => selectedCategory = (selectedCategory == "Compliance" ? "" : "Compliance")'>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 24px;">📁</span>
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Compliance</div>
+                <div style="font-size: 12px; color: var(--text-muted);">36 documents</div>
+            </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-light); text-align: right;">4.2 GB encrypted</div>
+    </div>
+
+    <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--cyan-500); @(selectedCategory == "Product Documents" ? "border-color: var(--cyan-500); background-color: var(--cyan-50);" : "")"
+         @onclick='() => selectedCategory = (selectedCategory == "Product Documents" ? "" : "Product Documents")'>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 24px;">📁</span>
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Product Documents</div>
+                <div style="font-size: 12px; color: var(--text-muted);">45 documents</div>
+            </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-light); text-align: right;">2.8 GB encrypted</div>
+    </div>
+
+    <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--navy-700); @(selectedCategory == "Reports" ? "border-color: var(--navy-700); background-color: var(--surface-hover);" : "")"
+         @onclick='() => selectedCategory = (selectedCategory == "Reports" ? "" : "Reports")'>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 24px;">📁</span>
+            <div>
+                <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Reports</div>
+                <div style="font-size: 12px; color: var(--text-muted);">18 documents</div>
+            </div>
+        </div>
+        <div style="font-size: 11px; color: var(--text-light); text-align: right;">640 MB encrypted</div>
+    </div>
+</div>
+
+<!-- Search & Filters -->
+<div class="org-card" style="padding: 14px 20px; margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+        <div style="display: flex; gap: 6px;">
+            @foreach (var cat in new[] { "All", "Invoices", "Purchase Orders", "Compliance", "Product Documents", "Reports" })
+            {
+                var isSel = (cat == "All" && string.IsNullOrEmpty(selectedCategory)) || selectedCategory == cat;
+                <button class="btn btn-sm" style="border-radius: var(--border-radius-md); padding: 5px 12px; font-size: 12.5px; font-weight: 600; border: 1px solid @(isSel ? "var(--blue-600)" : "transparent"); background: @(isSel ? "var(--blue-50)" : "transparent"); color: @(isSel ? "var(--blue-700)" : "var(--text-muted)");"
+                        @onclick='() => selectedCategory = (cat == "All" ? "" : cat)'>
+                    @cat
+                </button>
+            }
+        </div>
+        <div style="position: relative; width: 280px;">
+            <input type="text" class="form-control-org" placeholder="Search document name or hash..."
+                   @bind="searchTerm" @bind:event="oninput" style="padding: 6px 12px 6px 30px; font-size: 12.5px;" />
+            <div style="position: absolute; left: 10px; top: 8px; color: var(--text-light);">
+                <IconSvg Name="search" Size="14" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Document Table -->
+<div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th>Document Name</th>
+                    <th>Category</th>
+                    <th>Size</th>
+                    <th>Owner / Uploader</th>
+                    <th>Uploaded Timestamp</th>
+                    <th>Security Classification</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (FilteredDocs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <IconSvg Name="vault" Size="32" Class="mb-2" />
+                            <div>No encrypted documents found in this folder.</div>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var doc in FilteredDocs)
+                    {
+                        <tr>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 30px; height: 30px; border-radius: 6px; background-color: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;">
+                                        @doc.FileType
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; color: var(--navy-900);">@doc.Name</div>
+                                        <div style="font-size: 11px; font-family: monospace; color: var(--text-light);">SHA256: @doc.Sha256Hash.Substring(0, 16)...</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--text-main);">@doc.Category</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--text-muted);">@doc.FileSize</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--navy-900);">@doc.Owner</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12px; color: var(--text-muted);">@doc.UploadedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                            </td>
+                            <td>
+                                <span class="status-badge active-policy" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <IconSvg Name="lock" Size="11" /> @doc.SecurityBadge
+                                </span>
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                                    <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => previewDoc = doc" title="Preview Document">
+                                        Preview
+                                    </button>
+                                    <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => DownloadMockDoc(doc)" title="Download Encrypted File">
+                                        <IconSvg Name="download" Size="13" />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Preview Document Modal -->
+@if (previewDoc != null)
+{
+    <div class="modal-backdrop-org" @onclick="() => previewDoc = null">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 680px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="file-text" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 15px; margin: 0; font-weight: 700; color: var(--navy-900);">@previewDoc.Name</h3>
+                        <p style="font-size: 11.5px; color: var(--text-muted); margin: 0;">Verified Tenant Decryption Buffer</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => previewDoc = null" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="background-color: var(--surface-subtle); padding: 24px;">
+                <!-- Simulated PDF Container -->
+                <div style="background: #FFFFFF; border: 1px solid var(--border-medium); border-radius: 8px; padding: 28px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
+                    <!-- Watermark -->
+                    <div style="position: absolute; top: 40%; left: 10%; transform: rotate(-30deg); font-size: 32px; font-weight: 800; color: rgba(11, 31, 51, 0.05); text-transform: uppercase; pointer-events: none;">
+                        @TenantService.CurrentTenant.Name • CONFIDENTIAL
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; border-bottom: 2px solid var(--navy-900); padding-bottom: 12px; margin-bottom: 16px;">
+                        <div>
+                            <div style="font-weight: 800; font-size: 16px; color: var(--navy-900);">ORGSHIELD 360 DOCUMENT REPOSITORY</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Tenant: @TenantService.CurrentTenant.Name (@TenantService.CurrentTenant.Id)</div>
+                        </div>
+                        <span class="status-badge healthy" style="font-size: 10.5px;">AUTHENTICATED</span>
+                    </div>
+
+                    <div style="font-size: 13px; line-height: 1.6; color: var(--text-main);">
+                        <p><strong>Document Title:</strong> @previewDoc.Name</p>
+                        <p><strong>Security Classification:</strong> @previewDoc.SecurityBadge (Isolated AES-256 KMS Key: <code>@TenantService.CurrentTenant.EncryptionKeyId</code>)</p>
+                        <p><strong>Storage URI:</strong> <code style="font-size: 11px; color: var(--blue-600);">@previewDoc.S3StoragePath</code></p>
+                        <p><strong>Cryptographic SHA-256 Digest:</strong> <code style="font-size: 11px;">@previewDoc.Sha256Hash</code></p>
+                        <div style="margin-top: 18px; padding: 14px; background: var(--surface-subtle); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
+                            ✓ Certified by Healthcare Regulatory Audit Board.<br />
+                            ✓ Access verified for User Jagadeesh (Platform Administrator).
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => previewDoc = null">Close Preview</button>
+                <button class="btn-org btn-org-primary" @onclick="() => DownloadMockDoc(previewDoc)">
+                    <IconSvg Name="download" Size="14" /> Download Decrypted Copy
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Upload Document Modal -->
+@if (showUploadModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showUploadModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 540px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="upload" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Upload Encrypted Document</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Envelope encrypted into tenant KMS vault</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showUploadModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Document File Name</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. Quality_Audit_Checklist_Q3.pdf" @bind="newDocName" />
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Vault Category</label>
+                    <select class="form-select-org" @bind="newDocCategory">
+                        <option value="Invoices">Invoices</option>
+                        <option value="Purchase Orders">Purchase Orders</option>
+                        <option value="Compliance">Compliance</option>
+                        <option value="Product Documents">Product Documents</option>
+                        <option value="Reports">Reports</option>
+                    </select>
+                </div>
+                <div style="border: 2px dashed var(--border-medium); border-radius: var(--border-radius-md); padding: 24px; text-align: center; color: var(--text-muted);">
+                    <IconSvg Name="upload" Size="28" Class="mb-2" />
+                    <div style="font-weight: 600; font-size: 13px;">Drag and drop PDF / DOCX file here</div>
+                    <div style="font-size: 11px; margin-top: 2px;">Automatic AES-256 encryption applied before storage</div>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showUploadModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="HandleUpload" disabled="@(string.IsNullOrWhiteSpace(newDocName))">
+                    <IconSvg Name="lock" Size="14" /> Encrypt & Store
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string selectedCategory = "";
+    private string searchTerm = "";
+    private DocumentRecord? previewDoc;
+    private bool showUploadModal = false;
+
+    private string newDocName = "";
+    private string newDocCategory = "Compliance";
+
+    private List<DocumentRecord> FilteredDocs => DocService.GetDocuments().Where(d =>
+        (string.IsNullOrWhiteSpace(selectedCategory) || d.Category == selectedCategory) &&
+        (string.IsNullOrWhiteSpace(searchTerm) || d.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || d.Sha256Hash.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+    ).ToList();
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void HandleUpload()
+    {
+        if (string.IsNullOrWhiteSpace(newDocName)) return;
+
+        var name = newDocName.EndsWith(".pdf") ? newDocName : $"{newDocName}.pdf";
+        DocService.UploadDocument(name, newDocCategory, "2.4 MB");
+        showUploadModal = false;
+        newDocName = "";
+    }
+
+    private async Task DownloadMockDoc(DocumentRecord doc)
+    {
+        var content = $"ORGSHIELD 360 ENCRYPTED VAULT FILE\nDocument: {doc.Name}\nTenant: {TenantService.CurrentTenant.Name}\nSHA256: {doc.Sha256Hash}\nStatus: Verified";
+        await JS.InvokeVoidAsync("orgshield.downloadFile", doc.Name, content, "text/plain");
+        ToastService.Success("File Downloaded", $"{doc.Name} decrypted and downloaded.");
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

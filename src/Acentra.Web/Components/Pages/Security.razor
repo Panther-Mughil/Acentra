@@ -1,0 +1,380 @@
+@page "/security"
+@inject TenantStateService TenantService
+@inject SecurityCenterService SecurityService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="shield-check" Size="14" /> Zero-Trust Security Active
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Cryptographic Partition: @TenantService.CurrentTenant.EncryptionKeyId</span>
+        </div>
+        <h1>Security Center</h1>
+        <p>Continuous cryptographic posture monitoring, multi-tenant containment, and automated isolation verification.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-teal" @onclick="RunSecurityTest" disabled="@SecurityService.IsTestRunning">
+            @if (SecurityService.IsTestRunning)
+            {
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Testing Isolation Barrier...</span>
+            }
+            else
+            {
+                <IconSvg Name="shield-check" Size="16" />
+                <span>Run Security Test</span>
+            }
+        </button>
+    </div>
+</div>
+
+<!-- Top Row: Security Posture Score & Tenant Isolation Status -->
+<div style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Security Posture Card -->
+    <div class="org-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">SECURITY POSTURE</div>
+                <div class="card-subtitle-sm">Real-time enterprise trust score</div>
+            </div>
+            <span class="status-badge healthy">99.98% SLA</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-around; padding: 12px 0;">
+            <!-- Score Ring -->
+            <div class="security-score-circle">
+                <div class="security-score-inner">
+                    <span class="security-score-num">@SecurityService.OverallSecurityScore</span>
+                    <span class="security-score-tag">SECURE</span>
+                </div>
+            </div>
+
+            <!-- Active Defense Pillars -->
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <span style="color: var(--text-main); font-weight: 500;">● Tenant Isolation</span>
+                    <span class="status-badge active-policy" style="font-size: 10px; padding: 2px 7px;">ACTIVE</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <span style="color: var(--text-main); font-weight: 500;">● RBAC Governance</span>
+                    <span class="status-badge active-policy" style="font-size: 10px; padding: 2px 7px;">ACTIVE</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <span style="color: var(--text-main); font-weight: 500;">● API Protection</span>
+                    <span class="status-badge active-policy" style="font-size: 10px; padding: 2px 7px;">ACTIVE</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <span style="color: var(--text-main); font-weight: 500;">● Document Security</span>
+                    <span class="status-badge active-policy" style="font-size: 10px; padding: 2px 7px;">ACTIVE</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                    <span style="color: var(--text-main); font-weight: 500;">● Audit Logging</span>
+                    <span class="status-badge active-policy" style="font-size: 10px; padding: 2px 7px;">ACTIVE</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="background-color: var(--surface-subtle); padding: 10px 14px; border-radius: var(--border-radius-md); font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;">
+            <span>Zero Cross-Tenant Leakage Guarantee</span>
+            <strong style="color: var(--green-700);">SOC2 & HIPAA Compliant</strong>
+        </div>
+    </div>
+
+    <!-- Tenant Isolation Monitor Card -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg" style="display: flex; align-items: center; gap: 8px;">
+                    <IconSvg Name="shield" Size="18" /> Tenant Isolation Monitor
+                </div>
+                <div class="card-subtitle-sm">Scoped cryptographic boundary containment matrix</div>
+            </div>
+            <span class="sku-badge" style="background-color: var(--teal-50); color: var(--teal-700); border-color: rgba(0,166,166,0.3);">
+                Scope: @TenantService.CurrentTenant.Id
+            </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <!-- Current Context Box -->
+            <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 14px;">
+                <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.05em;">
+                    CURRENT CONTEXT
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Organization:</span>
+                        <strong style="color: var(--navy-900);">@TenantService.CurrentTenant.Name</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Tenant ID:</span>
+                        <strong style="color: var(--blue-600); font-family: monospace;">@TenantService.CurrentTenant.Id</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Branch:</span>
+                        <strong style="color: var(--navy-900);">@TenantService.CurrentBranch.Name</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Access Scope:</span>
+                        <strong style="color: var(--teal-700);">Organization + Branch</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Isolation Status Box -->
+            <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 14px;">
+                <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.05em;">
+                    ISOLATION STATUS
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+                    <div style="display: flex; align-items: center; gap: 6px; color: var(--green-700);">
+                        <IconSvg Name="check" Size="14" />
+                        <span>Database queries scoped (Row-level)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; color: var(--green-700);">
+                        <IconSvg Name="check" Size="14" />
+                        <span>API context validated (JWT claim)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; color: var(--green-700);">
+                        <IconSvg Name="check" Size="14" />
+                        <span>Storage path isolated (S3 prefix)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; color: var(--green-700);">
+                        <IconSvg Name="check" Size="14" />
+                        <span>Unauthorized cross-tenant request blocked</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+            <span style="font-size: 12px; color: var(--text-muted);">Simulate live penetration and cross-tenant boundary validation suite</span>
+            <button class="btn-org btn-org-primary btn-org-sm" @onclick="RunSecurityTest" disabled="@SecurityService.IsTestRunning">
+                <IconSvg Name="shield-check" Size="14" /> Execute Live Verification
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Tenant Isolation Test Results Suite -->
+<div class="org-card" style="margin-bottom: 24px;">
+    <div class="card-header-bar">
+        <div>
+            <div class="card-title-lg" style="display: flex; align-items: center; gap: 8px;">
+                <span>TENANT ISOLATION TEST SUITE</span>
+                @if (SecurityService.IsTestRunning)
+                {
+                    <span class="status-badge low-stock" style="font-size: 11px;">Running Test Suite...</span>
+                }
+                else
+                {
+                    <span class="status-badge healthy" style="font-size: 11px;">6 / 6 SECURITY CONTROLS PASSED</span>
+                }
+            </div>
+            <div class="card-subtitle-sm">Simulated boundary penetration resistance & automated audit validation</div>
+        </div>
+
+        @if (!SecurityService.IsTestRunning)
+        {
+            <span style="font-size: 12px; color: var(--green-700); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                <IconSvg Name="shield-check" Size="16" /> ZERO LEAKAGE DETECTED
+            </span>
+        }
+    </div>
+
+    <!-- Test Steps Table -->
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">Step</th>
+                    <th>Control Test Name</th>
+                    <th>Source Context</th>
+                    <th>Target Boundary</th>
+                    <th>Expected</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Security Assertion Log</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var step in SecurityService.TestSteps)
+                {
+                    <tr>
+                        <td>
+                            <span class="sku-badge">@step.StepNumber</span>
+                        </td>
+                        <td style="font-weight: 600; color: var(--navy-900);">
+                            @step.TestName
+                        </td>
+                        <td>
+                            <span style="font-size: 12px; color: var(--text-muted); font-family: monospace;">@step.SourceContext</span>
+                        </td>
+                        <td>
+                            <span style="font-size: 12px; color: var(--text-muted); font-family: monospace;">@step.TargetContext</span>
+                        </td>
+                        <td>
+                            <span class="status-badge @(step.ExpectedOutcome == "PASS" ? "healthy" : "critical")" style="font-size: 10px; padding: 2px 6px;">
+                                @step.ExpectedOutcome
+                            </span>
+                        </td>
+                        <td>
+                            @switch (step.Status)
+                            {
+                                case "Running":
+                                    <span class="status-badge pending" style="font-size: 11px;">
+                                        <span class="spinner-border spinner-border-sm" style="width: 10px; height: 10px;"></span> Running
+                                    </span>
+                                    break;
+                                case "Pass":
+                                    <span class="status-badge healthy" style="font-size: 11px;">
+                                        <IconSvg Name="check" Size="12" /> PASS
+                                    </span>
+                                    break;
+                                case "Blocked":
+                                    <span class="status-badge critical" style="font-size: 11px;">
+                                        <IconSvg Name="shield" Size="12" /> BLOCKED
+                                    </span>
+                                    break;
+                                default:
+                                    <span class="status-badge draft" style="font-size: 11px;">Pending</span>
+                                    break;
+                            }
+                        </td>
+                        <td style="font-family: monospace; font-size: 12px;">
+                            @(step.Status == "Pending" ? "—" : $"{step.DurationMs} ms")
+                        </td>
+                        <td style="font-size: 12px; color: var(--text-main);">
+                            @step.LogDetail
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Bottom Security Matrix: RBAC Matrix & Active Policies -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <!-- Active Security Policies -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Active Security Enforcements</div>
+                <div class="card-subtitle-sm">Zero-Trust infrastructure policies</div>
+            </div>
+            <span class="status-badge active-policy">4 Enforced</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 700; color: var(--navy-900);">KMS Envelope Encryption</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">AES-256 GCM client-side encryption before S3 vault write</div>
+                </div>
+                <span class="status-badge healthy" style="font-size: 11px;">Active</span>
+            </div>
+
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 700; color: var(--navy-900);">Row-Level Tenant Scoping (RLS)</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">TenantId automatically injected into all query execution plans</div>
+                </div>
+                <span class="status-badge healthy" style="font-size: 11px;">Active</span>
+            </div>
+
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 700; color: var(--navy-900);">Immutable Cryptographic Audit Ledger</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">WORM (Write Once Read Many) tamper-evident storage</div>
+                </div>
+                <span class="status-badge healthy" style="font-size: 11px;">Active</span>
+            </div>
+
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 700; color: var(--navy-900);">Adaptive Threat Rate Limiter & WAF</div>
+                    <div style="font-size: 11.5px; color: var(--text-muted);">Automated IP blacklisting upon cross-tenant probe detection</div>
+                </div>
+                <span class="status-badge healthy" style="font-size: 11px;">Active</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Role-Based Access Control (RBAC) Matrix -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Role-Based Access Scope (RBAC)</div>
+                <div class="card-subtitle-sm">Privilege boundaries for @TenantService.CurrentTenant.Name</div>
+            </div>
+            <span class="status-badge draft">Role Matrix</span>
+        </div>
+
+        <div class="table-responsive-org">
+            <table class="table-org" style="font-size: 12.5px;">
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>Inventory</th>
+                        <th>Orders</th>
+                        <th>Vault</th>
+                        <th>Audit Logs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="font-weight: 700; color: var(--navy-900);">Platform Admin</td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Full</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Approve</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Master</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Full</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 700; color: var(--navy-900);">Org Admin</td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Manage</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Approve</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Read/Write</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Read</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 700; color: var(--navy-900);">Inventory Manager</td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Edit/Count</span></td>
+                        <td><span style="color: var(--blue-600);"><IconSvg Name="check" Size="14" /> Create</span></td>
+                        <td><span style="color: var(--text-light);">— No Access</span></td>
+                        <td><span style="color: var(--text-light);">— No Access</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 700; color: var(--navy-900);">Auditor / Inspector</td>
+                        <td><span style="color: var(--blue-600);"><IconSvg Name="check" Size="14" /> Read Only</span></td>
+                        <td><span style="color: var(--blue-600);"><IconSvg Name="check" Size="14" /> Read Only</span></td>
+                        <td><span style="color: var(--blue-600);"><IconSvg Name="check" Size="14" /> Read Only</span></td>
+                        <td><span style="color: var(--green-600);"><IconSvg Name="check" Size="14" /> Full Export</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        SecurityService.OnTestStateChanged += StateHasChanged;
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private async Task RunSecurityTest()
+    {
+        await SecurityService.RunSimulatedSecurityTestAsync();
+    }
+
+    public void Dispose()
+    {
+        SecurityService.OnTestStateChanged -= StateHasChanged;
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

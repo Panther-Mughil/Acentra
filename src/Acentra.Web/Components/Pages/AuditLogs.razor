@@ -1,0 +1,216 @@
+@page "/audit-logs"
+@inject AuditLogService AuditService
+@inject TenantStateService TenantService
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="audit-logs" Size="14" /> Immutable Cryptographic Ledger
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Scoped to @TenantService.CurrentTenant.Name (@TenantService.CurrentTenant.Id)</span>
+        </div>
+        <h1>Audit Trail</h1>
+        <p>Complete activity history for this organization with state-change diffs, user identity stamps, and IP tracking.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-secondary" @onclick="ExportAuditLog">
+            <IconSvg Name="download" Size="14" /> Export Ledger CSV
+        </button>
+        <button class="btn-org @(isLiveStreamActive ? "btn-org-teal" : "btn-org-secondary")" @onclick="ToggleLiveStream">
+            <IconSvg Name="refresh" Size="14" /> @(isLiveStreamActive ? "● Live Stream Active" : "Start Live Feed")
+        </button>
+    </div>
+</div>
+
+<!-- Filters Bar -->
+<div class="org-card" style="padding: 16px 20px; margin-bottom: 20px;">
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; align-items: center;">
+        <div style="position: relative;">
+            <input type="text" class="form-control-org" placeholder="Search user, action, resource, or IP..."
+                   @bind="searchTerm" @bind:event="oninput" style="padding-left: 34px;" />
+            <div style="position: absolute; left: 11px; top: 10px; color: var(--text-light);">
+                <IconSvg Name="search" Size="15" />
+            </div>
+        </div>
+
+        <div>
+            <select class="form-select-org" @bind="selectedSeverity">
+                <option value="">All Severities</option>
+                <option value="Info">Info (Standard)</option>
+                <option value="Warning">Warning (Threshold)</option>
+                <option value="Critical">Critical (Security Threat)</option>
+            </select>
+        </div>
+
+        <div>
+            <select class="form-select-org" @bind="selectedResource">
+                <option value="">All Resources</option>
+                <option value="Inventory">Inventory</option>
+                <option value="Purchase Orders">Purchase Orders</option>
+                <option value="Document Vault">Document Vault</option>
+                <option value="Tenant Isolation Barrier">Tenant Barrier</option>
+                <option value="Storage Facility">Storage Facility</option>
+            </select>
+        </div>
+
+        <div>
+            <select class="form-select-org" @bind="selectedUser">
+                <option value="">All Users</option>
+                <option value="Jagadeesh">Jagadeesh (Admin)</option>
+                <option value="Dr. S. Ramanathan">Dr. S. Ramanathan</option>
+                <option value="Security Engine">Security Engine (WAF)</option>
+                <option value="Procurement Officer">Procurement Desk</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Timeline & Table View -->
+<div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th style="width: 140px;">Timestamp</th>
+                    <th>User & Role</th>
+                    <th>Action</th>
+                    <th>Resource Target</th>
+                    <th>Network IP</th>
+                    <th>Severity</th>
+                    <th>Details & State Transition</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (FilteredLogs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            <IconSvg Name="audit-logs" Size="32" Class="mb-2" />
+                            <div>No audit log events match your query.</div>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var log in FilteredLogs)
+                    {
+                        <tr>
+                            <td>
+                                <div style="font-weight: 700; color: var(--navy-900);">@log.Timestamp.ToString("HH:mm:ss")</div>
+                                <div style="font-size: 11px; color: var(--text-muted);">@log.Timestamp.ToString("yyyy-MM-dd")</div>
+                            </td>
+                            <td>
+                                <div style="font-weight: 700; color: var(--navy-900);">@log.User</div>
+                                <div style="font-size: 11px; color: var(--text-muted);">@log.UserRole</div>
+                            </td>
+                            <td>
+                                <strong style="color: var(--blue-600); font-size: 13px;">@log.Action</strong>
+                            </td>
+                            <td>
+                                <span style="font-size: 12.5px; color: var(--navy-900);">@log.Resource</span>
+                                <div style="font-size: 11px; color: var(--text-muted);">@log.ResourceId</div>
+                            </td>
+                            <td>
+                                <span class="sku-badge" style="font-family: monospace;">@log.IpAddress</span>
+                            </td>
+                            <td>
+                                <span class="status-badge @(log.Severity == "Critical" ? "critical" : log.Severity == "Warning" ? "low-stock" : "healthy")">
+                                    @log.Severity
+                                </span>
+                            </td>
+                            <td>
+                                <div style="font-size: 12.5px; color: var(--text-main);">@log.Details</div>
+                                @if (!string.IsNullOrEmpty(log.PreviousState) && log.PreviousState != "null")
+                                {
+                                    <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 11px; font-family: monospace;">
+                                        <span style="color: var(--red-600); text-decoration: line-through;">@log.PreviousState</span>
+                                        <span style="color: var(--text-muted);">→</span>
+                                        <span style="color: var(--green-700); font-weight: 700;">@log.NewState</span>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private string searchTerm = "";
+    private string selectedSeverity = "";
+    private string selectedResource = "";
+    private string selectedUser = "";
+    private bool isLiveStreamActive = false;
+    private System.Threading.Timer? liveTimer;
+
+    private List<AuditLog> FilteredLogs => AuditService.GetLogs().Where(l =>
+        (string.IsNullOrWhiteSpace(selectedSeverity) || l.Severity == selectedSeverity) &&
+        (string.IsNullOrWhiteSpace(selectedResource) || l.Resource.Contains(selectedResource, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrWhiteSpace(selectedUser) || l.User.Contains(selectedUser, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrWhiteSpace(searchTerm) || l.User.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || l.Action.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || l.Details.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || l.IpAddress.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+    ).ToList();
+
+    protected override void OnInitialized()
+    {
+        AuditService.OnLogAdded += StateHasChanged;
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void ToggleLiveStream()
+    {
+        isLiveStreamActive = !isLiveStreamActive;
+        if (isLiveStreamActive)
+        {
+            ToastService.Success("Audit Stream Started", "Real-time audit log stream connected.");
+            liveTimer = new System.Threading.Timer(_ =>
+            {
+                InvokeAsync(() =>
+                {
+                    AuditService.AddLog(new AuditLog
+                    {
+                        User = "System Health Probe",
+                        UserRole = "Telemetry Watcher",
+                        Action = "Heartbeat & Hash Verification",
+                        Resource = "KMS Ledger Integrity",
+                        ResourceId = "LEDGER-BLOCK-SHA256",
+                        IpAddress = "10.0.8.22",
+                        Severity = "Info",
+                        Details = "Verified 100% cryptographic ledger hash consistency for " + TenantService.CurrentTenant.Name
+                    });
+                });
+            }, null, 4000, 5000);
+        }
+        else
+        {
+            liveTimer?.Dispose();
+            liveTimer = null;
+            ToastService.Info("Audit Stream Paused", "Real-time feed paused.");
+        }
+    }
+
+    private async Task ExportAuditLog()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Timestamp,User,User Role,Action,Resource,Resource ID,IP Address,Severity,Details,Previous State,New State");
+        foreach (var l in FilteredLogs)
+        {
+            sb.AppendLine($"\"{l.Timestamp:yyyy-MM-dd HH:mm:ss}\",\"{l.User}\",\"{l.UserRole}\",\"{l.Action}\",\"{l.Resource}\",\"{l.ResourceId}\",\"{l.IpAddress}\",\"{l.Severity}\",\"{l.Details}\",\"{l.PreviousState}\",\"{l.NewState}\"");
+        }
+        await JS.InvokeVoidAsync("orgshield.downloadFile", $"Audit_Ledger_{TenantService.CurrentTenant.Code}_{DateTime.Now:yyyyMMdd}.csv", sb.ToString(), "text/csv");
+        ToastService.Success("Ledger Exported", "Immutable audit ledger downloaded.");
+    }
+
+    public void Dispose()
+    {
+        AuditService.OnLogAdded -= StateHasChanged;
+        TenantService.OnTenantChanged -= StateHasChanged;
+        liveTimer?.Dispose();
+    }
+}

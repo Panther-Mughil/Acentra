@@ -1,0 +1,274 @@
+@page "/operations"
+@inject TenantStateService TenantService
+@inject InventoryService InventoryService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge healthy">
+                <IconSvg Name="operations" Size="14" /> Live Operational Cockpit
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• @TenantService.CurrentBranch.Name</span>
+        </div>
+        <h1>Clinical Operations Cockpit</h1>
+        <p>Intra-branch stock balancing, cold chain IoT telemetry, shift handovers, and emergency department routing.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-primary" @onclick="() => showTransferModal = true">
+            <IconSvg Name="refresh" Size="14" /> + Transfer Stock Between Branches
+        </button>
+    </div>
+</div>
+
+<!-- Operations Grid: Intra-Branch Transfer & Cold-Chain IoT Telemetry -->
+<div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Cold-Chain Real-Time IoT Telemetry -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg" style="display: flex; align-items: center; gap: 8px;">
+                    <IconSvg Name="shield-check" Size="18" /> Cold-Chain IoT Vault Telemetry
+                </div>
+                <div class="card-subtitle-sm">Continuous thermal logging for critical biologics & anesthesia</div>
+            </div>
+            <span class="status-badge healthy">● All Sensors Normal</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;">
+            <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: var(--navy-900); font-size: 13.5px;">Vault 01 — Biologics</strong>
+                    <span class="status-badge healthy" style="font-size: 10px;">Sensor 01</span>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 6px;">
+                    <span style="font-size: 28px; font-weight: 800; color: var(--teal-700); font-family: var(--font-heading);">3.8°C</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">Target: 2°C - 8°C</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Last heartbeat: 12 sec ago • 0 excursions</div>
+            </div>
+
+            <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <strong style="color: var(--navy-900); font-size: 13.5px;">Vault 02 — Anesthetics</strong>
+                    <span class="status-badge healthy" style="font-size: 10px;">Sensor 02</span>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 6px;">
+                    <span style="font-size: 28px; font-weight: 800; color: var(--teal-700); font-family: var(--font-heading);">4.2°C</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">Target: 2°C - 8°C</span>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--text-light); margin-top: 4px;">Last heartbeat: 18 sec ago • 0 excursions</div>
+            </div>
+        </div>
+
+        <!-- Telemetry Timeline graph SVG -->
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">24-Hour Thermal Excursion Monitor</div>
+            <svg width="100%" height="60" viewBox="0 0 500 60" preserveAspectRatio="none">
+                <line x1="0" y1="15" x2="500" y2="15" stroke="#FEE2E2" stroke-width="1" stroke-dasharray="2 2"></line>
+                <line x1="0" y1="45" x2="500" y2="45" stroke="#FEE2E2" stroke-width="1" stroke-dasharray="2 2"></line>
+                <polyline points="0,30 50,32 100,28 150,29 200,31 250,30 300,28 350,33 400,29 450,30 500,30" fill="none" stroke="#00A6A6" stroke-width="2"></polyline>
+            </svg>
+            <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-light);">
+                <span>00:00</span>
+                <span>06:00</span>
+                <span>12:00</span>
+                <span>18:00</span>
+                <span>Current (Optimal)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intra-Branch Urgent Logistics Requests -->
+    <div class="org-card">
+        <div class="card-header-bar">
+            <div>
+                <div class="card-title-lg">Branch Stock Balancing</div>
+                <div class="card-subtitle-sm">Inter-hospital transfer pipeline</div>
+            </div>
+            <span class="status-badge approved">2 Pending</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; background: #FFFFFF;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <strong style="color: var(--navy-900); font-size: 13px;">Surgical Gloves (200 boxes)</strong>
+                    <span class="status-badge low-stock" style="font-size: 10px;">In Transit</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    From: <strong>Chennai Central</strong> → To: <strong>OMR Specialty Center</strong>
+                </div>
+                <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Driver dispatched • ETA: 45 min</div>
+            </div>
+
+            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; background: #FFFFFF;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <strong style="color: var(--navy-900); font-size: 13px;">Titanium Bone Screws (10 packs)</strong>
+                    <span class="status-badge healthy" style="font-size: 10px;">Completed</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    From: <strong>Bangalore Bannerghatta</strong> → To: <strong>Chennai Central</strong>
+                </div>
+                <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Reconciled by OT Head • Ref: TR-2026-88</div>
+            </div>
+        </div>
+
+        <button class="btn-org btn-org-secondary btn-org-sm" style="width: 100%; margin-top: 14px;" @onclick="() => showTransferModal = true">
+            + Initiate Inter-Branch Transfer
+        </button>
+    </div>
+</div>
+
+<!-- Shift Handover & Dispensing Activity Feed -->
+<div class="org-card">
+    <div class="card-header-bar">
+        <div>
+            <div class="card-title-lg">Clinical Shift Handover & Ward Reconciliations</div>
+            <div class="card-subtitle-sm">Logged for @TenantService.CurrentBranch.Name</div>
+        </div>
+        <span class="sku-badge">Shift B (Afternoon)</span>
+    </div>
+
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Clinical Unit</th>
+                    <th>Staff In-Charge</th>
+                    <th>Dispensed Items</th>
+                    <th>Reconciliation Status</th>
+                    <th>Signature Verified</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>13:45</td>
+                    <td><strong>ICU Unit 3 & Trauma</strong></td>
+                    <td>Staff Nurse V. Shanthi</td>
+                    <td>120x Surgical Gloves, 40x Normal Saline</td>
+                    <td><span class="status-badge healthy" style="font-size: 11px;"><IconSvg Name="check" Size="12" /> Balanced</span></td>
+                    <td><span class="sku-badge">DIGI-SIGN-9981</span></td>
+                </tr>
+                <tr>
+                    <td>12:30</td>
+                    <td><strong>Cardiac Cath Lab</strong></td>
+                    <td>Dr. K. Madhavan</td>
+                    <td>12x Troponin-I Diagnostic Kits</td>
+                    <td><span class="status-badge healthy" style="font-size: 11px;"><IconSvg Name="check" Size="12" /> Balanced</span></td>
+                    <td><span class="sku-badge">DIGI-SIGN-9979</span></td>
+                </tr>
+                <tr>
+                    <td>11:15</td>
+                    <td><strong>Main OT Complex 4</strong></td>
+                    <td>OT Tech R. Vignesh</td>
+                    <td>6x Titanium Bone Screws 3.5mm</td>
+                    <td><span class="status-badge healthy" style="font-size: 11px;"><IconSvg Name="check" Size="12" /> Balanced</span></td>
+                    <td><span class="sku-badge">DIGI-SIGN-9974</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Inter-Branch Stock Transfer Modal -->
+@if (showTransferModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showTransferModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 540px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="refresh" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Intra-Branch Stock Transfer</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Rebalance stock within @TenantService.CurrentTenant.Name</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showTransferModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Source Branch</label>
+                        <input type="text" class="form-control-org" value="@TenantService.CurrentBranch.Name" readonly />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Target Destination</label>
+                        <select class="form-select-org" @bind="targetBranchName">
+                            @foreach (var br in TenantService.CurrentTenant.Branches.Where(b => b.Id != TenantService.CurrentBranch.Id))
+                            {
+                                <option value="@br.Name">@br.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Item to Dispatch</label>
+                    <select class="form-select-org" @bind="transferItemId">
+                        @foreach (var itm in InventoryService.GetItems())
+                        {
+                            <option value="@itm.Id">@itm.Name (Available: @itm.CurrentStock)</option>
+                        }
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Transfer Quantity</label>
+                        <input type="number" class="form-control-org" @bind="transferQty" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Urgency</label>
+                        <select class="form-select-org">
+                            <option>Standard Logistics Courier</option>
+                            <option>Emergency Same-Day Dispatch</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showTransferModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="HandleTransfer">
+                    <IconSvg Name="check" Size="14" /> Dispatch Transfer
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool showTransferModal = false;
+    private string targetBranchName = "Chennai • OMR Specialty Center";
+    private string transferItemId = "ITM-001";
+    private int transferQty = 100;
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void HandleTransfer()
+    {
+        var item = InventoryService.GetItemById(transferItemId);
+        if (item != null)
+        {
+            InventoryService.AdjustStock(item.Id, -transferQty, $"Intra-branch transfer to {targetBranchName}");
+            ToastService.Success("Transfer Dispatched", $"{transferQty} units of {item.Name} routed to {targetBranchName}.");
+            showTransferModal = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

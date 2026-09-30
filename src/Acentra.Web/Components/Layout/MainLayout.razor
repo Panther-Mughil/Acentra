@@ -1,23 +1,73 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject CommandPaletteService CommandService
+@implements IDisposable
 
-<div class="page">
-    <div class="sidebar">
+<div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="app-sidebar @(isSidebarCollapsed ? "collapsed" : "") @(isMobileOpen ? "mobile-open" : "")">
         <NavMenu />
-    </div>
+    </aside>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+    <!-- Main Content Area -->
+    <div class="app-main">
+        <!-- Top Header -->
+        <TopHeader OnToggleSidebar="ToggleSidebar" />
 
-        <article class="content px-4">
+        <!-- Router Outlet -->
+        <main class="page-content-wrapper">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+<!-- Global Modals & Notifications -->
+<ToastContainer />
+<CommandPalette />
+
+@code {
+    private bool isSidebarCollapsed = false;
+    private bool isMobileOpen = false;
+    private DotNetObjectReference<MainLayout>? dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("orgshield.initKeybindings", dotNetRef);
+            }
+            catch
+            {
+                // Fallback if JS not ready
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OpenCommandPalette()
+    {
+        CommandService.Open();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void CloseModals()
+    {
+        CommandService.Close();
+        StateHasChanged();
+    }
+
+    private void ToggleSidebar()
+    {
+        isMobileOpen = !isMobileOpen;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}

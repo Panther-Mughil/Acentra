@@ -1,0 +1,241 @@
+@inject CommandPaletteService CommandService
+@inject InventoryService InventoryService
+@inject SupplierService SupplierService
+@inject PurchaseOrderService OrderService
+@inject DocumentVaultService DocService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@implements IDisposable
+
+@if (CommandService.IsOpen)
+{
+    <div class="modal-backdrop-org" @onclick="Close">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 640px; margin-top: -10vh;">
+            <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 12px;">
+                <span style="color: var(--blue-600);"><IconSvg Name="search" Size="20" /></span>
+                <input type="text" @ref="searchInput" class="form-control-org" placeholder="Search inventory, suppliers, orders, documents, or jump to page..."
+                       style="border: none; box-shadow: none; font-size: 15px; padding: 0;"
+                       @bind="query" @bind:event="oninput" autofocus />
+                <span class="kbd-shortcut">ESC</span>
+            </div>
+
+            <div class="modal-body-org" style="padding: 12px 16px; max-height: 400px;">
+                @if (string.IsNullOrWhiteSpace(query))
+                {
+                    <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px;">
+                        Quick Navigation & Actions
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <div class="command-item" @onclick='() => NavigateTo("/")'>
+                            <div class="command-icon-box"><IconSvg Name="dashboard" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Dashboard Overview</div>
+                                <div class="command-desc">Main operations KPI, Inventory Health donut, trend analytics</div>
+                            </div>
+                        </div>
+                        <div class="command-item" @onclick='() => NavigateTo("/inventory")'>
+                            <div class="command-icon-box"><IconSvg Name="inventory" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Inventory Catalog (12,840 Items)</div>
+                                <div class="command-desc">Manage stock levels, batch numbers, storage locations, low stock alerts</div>
+                            </div>
+                        </div>
+                        <div class="command-item" @onclick='() => NavigateTo("/security")'>
+                            <div class="command-icon-box" style="background-color: var(--teal-50); color: var(--teal-600);"><IconSvg Name="shield-check" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Security Center & Tenant Isolation Monitor</div>
+                                <div class="command-desc">Run simulated 6-step zero-leakage multi-tenant security verification test</div>
+                            </div>
+                        </div>
+                        <div class="command-item" @onclick='() => NavigateTo("/orders")'>
+                            <div class="command-icon-box"><IconSvg Name="orders" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Purchase Orders & Procurement</div>
+                                <div class="command-desc">Create POs, approve batches, track shipments and receipts</div>
+                            </div>
+                        </div>
+                        <div class="command-item" @onclick='() => NavigateTo("/documents")'>
+                            <div class="command-icon-box"><IconSvg Name="documents" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Secure Document Vault</div>
+                                <div class="command-desc">AES-256 encrypted invoices, compliance certs, purchase receipts</div>
+                            </div>
+                        </div>
+                        <div class="command-item" @onclick='() => NavigateTo("/audit-logs")'>
+                            <div class="command-icon-box"><IconSvg Name="audit-logs" Size="16" /></div>
+                            <div>
+                                <div class="command-title">Immutable Audit Trail</div>
+                                <div class="command-desc">View full cryptographic change logs, IP tracking, and state diffs</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <!-- Search Results -->
+                    @if (MatchedItems.Any())
+                    {
+                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px;">
+                            Inventory Products (@MatchedItems.Count)
+                        </div>
+                        @foreach (var item in MatchedItems)
+                        {
+                            <div class="command-item" @onclick='() => NavigateTo($"/inventory?item={item.Id}")'>
+                                <div class="command-icon-box"><IconSvg Name="inventory" Size="16" /></div>
+                                <div style="flex: 1;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span class="command-title">@item.Name</span>
+                                        <span class="sku-badge">@item.Sku</span>
+                                    </div>
+                                    <div class="command-desc">Stock: @item.CurrentStock @item.Unit • @item.StorageLocation • Status: @item.Status</div>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @if (MatchedSuppliers.Any())
+                    {
+                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px; margin-top: 8px;">
+                            Suppliers (@MatchedSuppliers.Count)
+                        </div>
+                        @foreach (var sup in MatchedSuppliers)
+                        {
+                            <div class="command-item" @onclick='() => NavigateTo("/suppliers")'>
+                                <div class="command-icon-box"><IconSvg Name="suppliers" Size="16" /></div>
+                                <div style="flex: 1;">
+                                    <div class="command-title">@sup.Name</div>
+                                    <div class="command-desc">@sup.Category • @sup.DeliveryScore% On-Time • @sup.Location</div>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @if (MatchedOrders.Any())
+                    {
+                        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px; margin-top: 8px;">
+                            Purchase Orders (@MatchedOrders.Count)
+                        </div>
+                        @foreach (var po in MatchedOrders)
+                        {
+                            <div class="command-item" @onclick='() => NavigateTo("/orders")'>
+                                <div class="command-icon-box"><IconSvg Name="orders" Size="16" /></div>
+                                <div style="flex: 1;">
+                                    <div style="display: flex; justify-content: space-between;">
+                                        <span class="command-title">@po.PoNumber — @po.SupplierName</span>
+                                        <span style="font-weight: 700; color: var(--navy-900);">₹@po.TotalAmount.ToString("N0")</span>
+                                    </div>
+                                    <div class="command-desc">Status: @po.Status • Priority: @po.Priority</div>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @if (!MatchedItems.Any() && !MatchedSuppliers.Any() && !MatchedOrders.Any())
+                    {
+                        <div style="padding: 30px 20px; text-align: center; color: var(--text-muted);">
+                            <IconSvg Name="search" Size="32" Class="mb-2" />
+                            <div style="font-weight: 600;">No results found for "@query"</div>
+                            <div style="font-size: 12px; margin-top: 4px;">Try searching for "Gloves", "Propofol", "HealthSupply", or "PO-2026".</div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div style="padding: 10px 20px; background-color: var(--surface-subtle); border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted);">
+                <span>Use <strong>↑</strong> <strong>↓</strong> to navigate, <strong>ESC</strong> to dismiss</span>
+                <span style="display: flex; align-items: center; gap: 4px;"><IconSvg Name="shield-check" Size="12" /> ORGSHIELD 360 Command Search</span>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .command-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: var(--border-radius-md);
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
+    }
+    .command-item:hover {
+        background-color: var(--surface-hover);
+    }
+    .command-icon-box {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background-color: var(--surface-subtle);
+        border: 1px solid var(--border-subtle);
+        color: var(--blue-600);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .command-title {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--navy-900);
+    }
+    .command-desc {
+        font-size: 11.5px;
+        color: var(--text-muted);
+    }
+</style>
+
+@code {
+    private ElementReference searchInput;
+    private string query = "";
+
+    private List<InventoryItem> MatchedItems => string.IsNullOrWhiteSpace(query)
+        ? new()
+        : InventoryService.GetItems().Where(i =>
+            i.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            i.Sku.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            i.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
+        ).Take(4).ToList();
+
+    private List<Supplier> MatchedSuppliers => string.IsNullOrWhiteSpace(query)
+        ? new()
+        : SupplierService.GetSuppliers().Where(s =>
+            s.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            s.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
+        ).Take(3).ToList();
+
+    private List<PurchaseOrder> MatchedOrders => string.IsNullOrWhiteSpace(query)
+        ? new()
+        : OrderService.GetOrders().Where(o =>
+            o.PoNumber.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            o.SupplierName.Contains(query, StringComparison.OrdinalIgnoreCase)
+        ).Take(3).ToList();
+
+    protected override void OnInitialized()
+    {
+        CommandService.OnVisibilityChanged += HandleVisibilityChanged;
+    }
+
+    private void HandleVisibilityChanged()
+    {
+        query = "";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void NavigateTo(string url)
+    {
+        Close();
+        Nav.NavigateTo(url);
+    }
+
+    private void Close()
+    {
+        CommandService.Close();
+    }
+
+    public void Dispose()
+    {
+        CommandService.OnVisibilityChanged -= HandleVisibilityChanged;
+    }
+}
