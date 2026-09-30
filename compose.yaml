@@ -33,5 +33,26 @@ services:
       retries: 10
       start_period: 10s
 
+  minio:
+    image: docker.io/minio/minio
+    container_name: acentra-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-acentra}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-acentra_dev_password}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - acentra-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   acentra-pgdata:
+  acentra-minio-data:

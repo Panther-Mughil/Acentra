@@ -90,7 +90,11 @@ services.AddInventory();
 
 **Tooling:** `dotnet tool install --global dotnet-ef` (install into `~/.dotnet/tools`; add to `PATH` for the session).
 
-**`compose.yaml`:** add a `minio` service (`docker.io/minio/minio`), API `9000`, console `9001`, named volume `acentra-minio-data`, healthcheck on `/minio/health/live`, credentials from env with dev defaults.
+**`compose.yaml`:** add a `minio` service, API `9000`, console `9001`, named volume `acentra-minio-data`, healthcheck `curl -f http://localhost:9000/minio/health/live`, credentials from env with dev defaults.
+
+> **AMENDMENT (verified by the Overseer during Phase-1 verification):** the image must be **`docker.io/pgsty/minio:latest`**, not `docker.io/minio/minio`. Upstream MinIO has withdrawn its Docker Hub images — **every** tag of `docker.io/minio/minio` now returns `requested access to the resource is denied`, and `quay.io/minio/minio` returns `unauthorized`. `pgsty/minio` is a community mirror of the same MinIO server code; the container was verified to serve `HTTP 200` on `/minio/health/live` (`RELEASE.2026-08-04`). `curl`, `mc` and `bash` are all present in that image, so the healthcheck command above is valid and was confirmed to exit 0.
+>
+> REQ-004 owns this line from here on — if the image is replaced again, REQ-004 updates it and this note.
 
 **`appsettings.json`:** add `ConnectionStrings:ControlPlane`, `ConnectionStrings:TenantTemplate` (with `{0}` for the database name), and a `Storage` section (`Provider`, `LocalRoot`, `Endpoint`, `Bucket`, `AccessKey`, `SecretKey`, `UseSsl`, `Region`).
 

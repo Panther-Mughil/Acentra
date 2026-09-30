@@ -77,7 +77,11 @@ public sealed class StorageOptions {
 
 **Provider selection:** `Provider` = `S3` (default in Development) or `Local`; integration tests inject `Local` so no MinIO is required.
 
-**`compose.yaml` addition:** `minio` service from `docker.io/minio/minio`, command `server /data --console-address ":9001"`, ports `9000` and `9001` (both env-overridable), `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from env with dev defaults, named volume `acentra-minio-data`, healthcheck hitting `/minio/health/live`.
+**`compose.yaml` addition:** `minio` service, command `server /data --console-address ":9001"`, ports `9000` and `9001` (both env-overridable), `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from env with dev defaults, named volume `acentra-minio-data`, healthcheck `curl -f http://localhost:9000/minio/health/live`.
+
+> **Image source — this is your first task, and REQ-001 landed it wrong.** REQ-001 shipped `docker.io/minio/minio`, which **cannot be pulled**: upstream MinIO has withdrawn its Docker Hub images, so every tag returns `requested access to the resource is denied` (`quay.io/minio/minio` also returns `unauthorized`). Change the image to **`docker.io/pgsty/minio:latest`** — a community mirror of the same MinIO server, verified by the Overseer to serve `HTTP 200` on `/minio/health/live` at `RELEASE.2026-08-04`. Do not switch to a different S3 product (SeaweedFS/Garage/LocalStack) — decision #2 is MinIO specifically. `curl`, `mc` and `bash` are present in this image, so the healthcheck above is valid.
+>
+> `podman-compose config` does **not** catch this class of error — it only parses YAML. The container must actually be started and observed healthy.
 
 ## 5. Step-by-Step Implementation Plan
 
@@ -93,7 +97,7 @@ public sealed class StorageOptions {
 ## 6. Acceptance Criteria & Testing Requirements
 
 - [ ] `dotnet build Acentra.slnx` → 0 warnings, 0 errors; `dotnet test` → 2/2 plus new storage tests.
-- [ ] `podman-compose config` validates; `podman-compose up -d` brings up `postgres` **and** `minio`; both healthy.
+- [ ] `podman-compose config` validates; `podman-compose up -d` brings up `postgres` **and** `minio`; **both report `(healthy)` in `podman-compose ps`** — observed, not inferred. The image reference is `docker.io/pgsty/minio:latest`.
 - [ ] MinIO round-trip verified with the **real** client: `SaveAsync` then `OpenAsync` returns byte-identical content; `DeleteAsync` removes it.
 - [ ] `LocalFileStorage` round-trips identically against a temp root.
 - [ ] A key containing `..` or an absolute path is **rejected**, and nothing is written outside `LocalRoot`.

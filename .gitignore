@@ -54,6 +54,9 @@ Thumbs.db
 *.swp
 *~
 
+# Local file storage
+storage/
+
 # Local env / compose overrides
 .env
 .env.*
