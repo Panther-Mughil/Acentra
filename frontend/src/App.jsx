@@ -7,13 +7,15 @@ import UploadDocModal from './components/UploadDocModal';
 import CreateTenantModal from './components/CreateTenantModal';
 import TenantSecurityAudit from './components/TenantSecurityAudit';
 import S3StorageExplorer from './components/S3StorageExplorer';
+import ArchitectureDiagram from './components/ArchitectureDiagram';
+import Toast from './components/Toast';
 import { 
   TenantApi, 
   InventoryApi, 
   setActiveTenantContext 
 } from './services/api';
 
-// Initial Mock Seed Data (used instantly or synchronized with API)
+// Initial Mock Seed Data
 const INITIAL_TENANTS = [
   { id: '11111111-1111-1111-1111-111111111111', code: 'apex-health', name: 'Apex Healthcare System', tier: 'Enterprise' },
   { id: '22222222-2222-2222-2222-222222222222', code: 'biomed-labs', name: 'BioMed Diagnostics & Labs', tier: 'Professional' },
@@ -41,11 +43,12 @@ const INITIAL_ITEMS_BY_TENANT = {
 export default function App() {
   const [tenants, setTenants] = useState(INITIAL_TENANTS);
   const [activeTenant, setActiveTenant] = useState(INITIAL_TENANTS[0]);
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 's3storage', 'audit'
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 's3storage', 'architecture', 'audit'
   
   const [items, setItems] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
   // Modals state
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -57,26 +60,52 @@ export default function App() {
   const [itemToUpload, setItemToUpload] = useState(null);
   const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
 
-  // In-memory tenant store synchronization fallback
+  // In-memory tenant store
   const [tenantInventoryStore, setTenantInventoryStore] = useState(INITIAL_ITEMS_BY_TENANT);
 
-  // On mount & activeTenant change
+  const addToast = (type, title, message) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Load tenants on mount
+  useEffect(() => {
+    const loadTenants = async () => {
+      try {
+        const fetched = await TenantApi.getAll();
+        if (fetched && fetched.length > 0) {
+          setTenants(fetched);
+          setActiveTenant(fetched[0]);
+        }
+      } catch (err) {
+        console.log('Using local tenant list fallback.');
+      }
+    };
+    loadTenants();
+  }, []);
+
+  // When activeTenant changes
   useEffect(() => {
     if (activeTenant) {
       setActiveTenantContext(activeTenant);
       fetchTenantData(activeTenant.id);
+      addToast('info', 'Switched Tenant Context', `Now viewing partition: ${activeTenant.name}`);
     }
-  }, [activeTenant]);
+  }, [activeTenant?.id]);
 
   const fetchTenantData = async (tenantId) => {
     setLoading(true);
     try {
-      // Attempt to fetch from real .NET API first
       const data = await InventoryApi.getAll();
       setItems(data);
     } catch (err) {
-      // Fallback to in-memory isolated tenant partition
-      console.log('API running in local-fallback mode, using isolated partition for tenant:', tenantId);
       const tenantItems = tenantInventoryStore[tenantId] || [];
       setItems(tenantItems);
     } finally {
@@ -89,63 +118,104 @@ export default function App() {
   };
 
   const handleCreateTenant = async (newTenantData) => {
-    const newId = crypto.randomUUID ? crypto.randomUUID() : `tenant-${Date.now()}`;
-    const newTenant = {
-      id: newId,
-      code: newTenantData.code,
-      name: newTenantData.name,
-      tier: newTenantData.subscriptionTier || 'Enterprise'
-    };
+    try {
+      const created = await TenantApi.create(newTenantData);
+      setTenants(prev => [...prev, created]);
+      setActiveTenant(created);
+      addToast('success', 'Tenant Created', `Tenant "${created.name}" provisioned successfully.`);
+    } catch (err) {
+      const newId = crypto.randomUUID ? crypto.randomUUID() : `tenant-${Date.now()}`;
+      const newTenant = {
+        id: newId,
+        code: newTenantData.code,
+        name: newTenantData.name,
+        tier: newTenantData.subscriptionTier || 'Enterprise'
+      };
 
-    setTenants(prev => [...prev, newTenant]);
-    setTenantInventoryStore(prev => ({
-      ...prev,
-      [newId]: []
-    }));
-    setActiveTenant(newTenant);
+      setTenants(prev => [...prev, newTenant]);
+      setTenantInventoryStore(prev => ({
+        ...prev,
+        [newId]: []
+      }));
+      setActiveTenant(newTenant);
+      addToast('success', 'Tenant Created', `Tenant "${newTenant.name}" provisioned.`);
+    }
   };
 
   const handleSaveItem = async (itemData) => {
-    if (itemToEdit) {
-      // Update item
-      setTenantInventoryStore(prev => {
-        const updated = (prev[activeTenant.id] || []).map(i => 
-          i.id === itemToEdit.id ? { ...i, ...itemData } : i
-        );
-        return { ...prev, [activeTenant.id]: updated };
-      });
-      setItems(prev => prev.map(i => i.id === itemToEdit.id ? { ...i, ...itemData } : i));
-    } else {
-      // Create item
-      const newItem = {
-        id: `item-${Date.now()}`,
-        tenantId: activeTenant.id,
-        ...itemData,
-        s3FileKey: null,
-        fileUrl: null
-      };
-
-      setTenantInventoryStore(prev => ({
-        ...prev,
-        [activeTenant.id]: [...(prev[activeTenant.id] || []), newItem]
-      }));
-      setItems(prev => [...prev, newItem]);
+    try {
+      if (itemToEdit) {
+        const updated = await InventoryApi.update(itemToEdit.id, itemData);
+        setItems(prev => prev.map(i => i.id === itemToEdit.id ? updated : i));
+        addToast('success', 'Item Updated', `Updated "${itemData.name}"`);
+      } else {
+        const created = await InventoryApi.create(itemData);
+        setItems(prev => [...prev, created]);
+        addToast('success', 'Item Created', `Added "${itemData.name}" with SKU: ${itemData.sku}`);
+      }
+    } catch (err) {
+      if (itemToEdit) {
+        setTenantInventoryStore(prev => {
+          const updated = (prev[activeTenant.id] || []).map(i => 
+            i.id === itemToEdit.id ? { ...i, ...itemData } : i
+          );
+          return { ...prev, [activeTenant.id]: updated };
+        });
+        setItems(prev => prev.map(i => i.id === itemToEdit.id ? { ...i, ...itemData } : i));
+        addToast('success', 'Item Updated', `Updated "${itemData.name}"`);
+      } else {
+        const newItem = {
+          id: `item-${Date.now()}`,
+          tenantId: activeTenant.id,
+          ...itemData,
+          s3FileKey: null,
+          fileUrl: null
+        };
+        setTenantInventoryStore(prev => ({
+          ...prev,
+          [activeTenant.id]: [...(prev[activeTenant.id] || []), newItem]
+        }));
+        setItems(prev => [...prev, newItem]);
+        addToast('success', 'Item Created', `Added "${itemData.name}" with SKU: ${itemData.sku}`);
+      }
     }
   };
 
   const handleDeleteItem = async (itemId) => {
     if (window.confirm('Are you sure you want to delete this inventory item?')) {
-      setTenantInventoryStore(prev => ({
-        ...prev,
-        [activeTenant.id]: (prev[activeTenant.id] || []).filter(i => i.id !== itemId)
-      }));
+      try {
+        await InventoryApi.delete(itemId);
+      } catch (err) {
+        setTenantInventoryStore(prev => ({
+          ...prev,
+          [activeTenant.id]: (prev[activeTenant.id] || []).filter(i => i.id !== itemId)
+        }));
+      }
       setItems(prev => prev.filter(i => i.id !== itemId));
+      addToast('info', 'Item Removed', 'Inventory item deleted from tenant partition.');
     }
   };
 
   const handleAdjustStock = async (itemId, adjustment) => {
-    setTenantInventoryStore(prev => {
-      const updated = (prev[activeTenant.id] || []).map(i => {
+    try {
+      const res = await InventoryApi.adjustStock(itemId, adjustment);
+      setItems(prev => prev.map(i => i.id === itemId ? res.item : i));
+    } catch (err) {
+      setTenantInventoryStore(prev => {
+        const updated = (prev[activeTenant.id] || []).map(i => {
+          if (i.id === itemId) {
+            let newQty = i.quantity;
+            if (adjustment.type === 'INBOUND') newQty += adjustment.quantity;
+            else if (adjustment.type === 'OUTBOUND') newQty = Math.max(0, newQty - adjustment.quantity);
+            else if (adjustment.type === 'AUDIT_CORRECTION') newQty = adjustment.quantity;
+            return { ...i, quantity: newQty };
+          }
+          return i;
+        });
+        return { ...prev, [activeTenant.id]: updated };
+      });
+
+      setItems(prev => prev.map(i => {
         if (i.id === itemId) {
           let newQty = i.quantity;
           if (adjustment.type === 'INBOUND') newQty += adjustment.quantity;
@@ -154,40 +224,37 @@ export default function App() {
           return { ...i, quantity: newQty };
         }
         return i;
-      });
-      return { ...prev, [activeTenant.id]: updated };
-    });
-
-    setItems(prev => prev.map(i => {
-      if (i.id === itemId) {
-        let newQty = i.quantity;
-        if (adjustment.type === 'INBOUND') newQty += adjustment.quantity;
-        else if (adjustment.type === 'OUTBOUND') newQty = Math.max(0, newQty - adjustment.quantity);
-        else if (adjustment.type === 'AUDIT_CORRECTION') newQty = adjustment.quantity;
-        return { ...i, quantity: newQty };
-      }
-      return i;
-    }));
+      }));
+    }
+    addToast('success', 'Stock Adjusted', `Applied ${adjustment.type} adjustment (${adjustment.quantity} units).`);
   };
 
   const handleUploadDoc = async (itemId, file) => {
-    const s3Key = `${activeTenant.code}/docs/${file.name}`;
-    setTenantInventoryStore(prev => {
-      const updated = (prev[activeTenant.id] || []).map(i => 
-        i.id === itemId ? { ...i, s3FileKey: s3Key, fileUrl: URL.createObjectURL(file) } : i
-      );
-      return { ...prev, [activeTenant.id]: updated };
-    });
+    try {
+      const res = await InventoryApi.uploadDocument(itemId, file);
+      setItems(prev => prev.map(i => 
+        i.id === itemId ? { ...i, s3FileKey: res.s3Key, fileUrl: res.presignedUrl } : i
+      ));
+    } catch (err) {
+      const s3Key = `${activeTenant.code}/docs/${file.name}`;
+      setTenantInventoryStore(prev => {
+        const updated = (prev[activeTenant.id] || []).map(i => 
+          i.id === itemId ? { ...i, s3FileKey: s3Key, fileUrl: URL.createObjectURL(file) } : i
+        );
+        return { ...prev, [activeTenant.id]: updated };
+      });
 
-    setItems(prev => prev.map(i => 
-      i.id === itemId ? { ...i, s3FileKey: s3Key, fileUrl: URL.createObjectURL(file) } : i
-    ));
+      setItems(prev => prev.map(i => 
+        i.id === itemId ? { ...i, s3FileKey: s3Key, fileUrl: URL.createObjectURL(file) } : i
+      ));
+    }
+    addToast('success', 'S3 Upload Complete', `Encrypted file attached under ${activeTenant.code}/ partition.`);
   };
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-slate-100 flex flex-col selection:bg-blue-500 selection:text-white">
       
-      {/* Top Navbar */}
+      {/* Top Header */}
       <Header
         tenants={tenants}
         activeTenant={activeTenant}
@@ -197,7 +264,7 @@ export default function App() {
         setActiveTab={setActiveTab}
       />
 
-      {/* Main Body */}
+      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'inventory' && (
           <InventoryDashboard
@@ -211,6 +278,7 @@ export default function App() {
             onOpenUploadDoc={(item) => { setItemToUpload(item); setIsUploadDocOpen(true); }}
             onDeleteItem={handleDeleteItem}
             activeTenant={activeTenant}
+            onNotify={addToast}
           />
         )}
 
@@ -218,6 +286,12 @@ export default function App() {
           <S3StorageExplorer
             activeTenant={activeTenant}
             items={items}
+          />
+        )}
+
+        {activeTab === 'architecture' && (
+          <ArchitectureDiagram
+            activeTenant={activeTenant}
           />
         )}
 
@@ -229,7 +303,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Modals */}
+      {/* Interactive Modals */}
       <ItemModal
         isOpen={isAddItemOpen || isEditItemOpen}
         onClose={() => { setIsAddItemOpen(false); setIsEditItemOpen(false); setItemToEdit(null); }}
@@ -259,9 +333,12 @@ export default function App() {
         onCreateTenant={handleCreateTenant}
       />
 
+      {/* Floating Real-Time Notifications */}
+      <Toast toasts={toasts} onDismiss={removeToast} />
+
       {/* Footer */}
-      <footer className="border-t border-white/5 py-6 bg-slate-950/40 text-center text-xs text-slate-500 font-mono">
-        Acentra Health Codeathon 2026 • Multi-Tenant Inventory Architecture • ASP.NET Core & EF Core Query Filters
+      <footer className="border-t border-white/5 py-6 bg-slate-950/60 text-center text-xs text-slate-500 font-mono">
+        Acentra Health Codeathon 2026 • Multi-Tenant Inventory Architecture • ASP.NET Core 8 & EF Core Global Query Filters
       </footer>
 
     </div>

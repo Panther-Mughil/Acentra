@@ -15,7 +15,10 @@ import {
   Boxes,
   CheckCircle,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  Download,
+  ShoppingBag,
+  Zap
 } from 'lucide-react';
 
 export default function InventoryDashboard({ 
@@ -28,7 +31,8 @@ export default function InventoryDashboard({
   onOpenAdjustStock, 
   onOpenUploadDoc, 
   onDeleteItem,
-  activeTenant
+  activeTenant,
+  onNotify
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -56,6 +60,24 @@ export default function InventoryDashboard({
 
   const categories = ['ALL', 'Pharmaceuticals', 'Surgical Equipment', 'PPE & Safety', 'Diagnostics', 'Consumables'];
 
+  const exportCSV = () => {
+    if (filteredItems.length === 0) return;
+    const headers = 'SKU,Name,Category,Quantity,UnitPrice,TotalValue,ReorderLevel,S3FileKey\n';
+    const rows = filteredItems.map(i => 
+      `"${i.sku}","${i.name}","${i.category}",${i.quantity},${i.unitPrice},${(i.quantity * i.unitPrice).toFixed(2)},${i.reorderLevel},"${i.s3FileKey || ''}"`
+    ).join('\n');
+    
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${activeTenant?.code || 'tenant'}_inventory_export.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    if (onNotify) onNotify('success', 'Export Completed', `Downloaded CSV for ${activeTenant?.name}`);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       
@@ -65,9 +87,9 @@ export default function InventoryDashboard({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400">Total SKUs</p>
-              <h3 className="text-2xl font-black text-white mt-1">{metrics?.totalSkus || items.length}</h3>
+              <h3 className="text-2xl font-black text-white mt-1">{items.length}</h3>
               <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1 font-medium">
-                <CheckCircle className="w-3 h-3" /> Tenant Isolated Partition
+                <CheckCircle className="w-3 h-3" /> Isolated Partition
               </p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
@@ -81,9 +103,9 @@ export default function InventoryDashboard({
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400">Total Valuation</p>
               <h3 className="text-2xl font-black text-white mt-1">
-                ${(metrics?.totalValuation || items.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${items.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h3>
-              <p className="text-[11px] text-slate-400 mt-1 font-medium">Real-time inventory value</p>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">Current Stock Asset Value</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
               <DollarSign className="w-6 h-6" />
@@ -113,7 +135,7 @@ export default function InventoryDashboard({
               <h3 className="text-2xl font-black text-cyan-400 mt-1">
                 {items.filter(i => i.s3FileKey).length}
               </h3>
-              <p className="text-[11px] text-cyan-400/80 mt-1 font-medium">Encrypted tenant files</p>
+              <p className="text-[11px] text-cyan-400/80 mt-1 font-medium">Isolated tenant files</p>
             </div>
             <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
               <UploadCloud className="w-6 h-6" />
@@ -130,7 +152,7 @@ export default function InventoryDashboard({
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search SKU, name, details..."
+              placeholder="Search SKU, item name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="glass-input w-full pl-9"
@@ -165,6 +187,15 @@ export default function InventoryDashboard({
 
         <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
           <button 
+            onClick={exportCSV}
+            className="btn-secondary text-xs"
+            title="Export CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Export CSV</span>
+          </button>
+
+          <button 
             onClick={onRefresh}
             className="btn-secondary text-xs"
             title="Reload from API"
@@ -178,14 +209,14 @@ export default function InventoryDashboard({
             className="btn-primary text-xs"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Inventory Item</span>
+            <span>Add Item</span>
           </button>
         </div>
       </div>
 
       {/* Inventory Items Table */}
       <div className="glass-panel overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center space-x-2">
             <h2 className="text-sm font-bold text-white tracking-wide uppercase">
               {activeTenant ? `${activeTenant.name}'s Inventory` : 'Tenant Inventory'}
@@ -194,7 +225,7 @@ export default function InventoryDashboard({
           </div>
 
           <div className="text-xs text-slate-400 font-mono">
-            Isolated Partition: <span className="text-blue-400">{activeTenant?.code}</span>
+            Tenant Filter: <span className="text-cyan-400 font-bold">{activeTenant?.code}</span>
           </div>
         </div>
 
@@ -208,7 +239,7 @@ export default function InventoryDashboard({
             <Package className="w-12 h-12 mx-auto text-slate-600 mb-3" />
             <h4 className="text-base font-semibold text-slate-300">No items found</h4>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              No inventory records exist for this tenant matching the selected filters.
+              No inventory records exist for this tenant matching your search.
             </p>
             <button 
               onClick={onOpenAddItem}
@@ -239,7 +270,7 @@ export default function InventoryDashboard({
                   const stockPercent = Math.min(100, Math.round((item.quantity / (item.reorderLevel * 3 || 100)) * 100));
 
                   return (
-                    <tr key={item.id} className="group">
+                    <tr key={item.id} className="group hover:bg-slate-800/40 transition">
                       <td>
                         <div className="font-semibold text-white group-hover:text-blue-400 transition-colors">
                           {item.name}
