@@ -7,20 +7,21 @@
 
 ## 1. Exact Feature Request and Clarified Requirements
 
-Four approved changes, ordered by importance:
+Approved changes, ordered by importance:
 
 1. **Kill the tenant-enumeration oracle.** Today an unauthenticated caller can tell whether a tenant exists: unknown slug → `400 "Unknown tenant 'x'"`, existing slug → `302`/`403`. The tenant lookup also runs *before* the authentication check, so this leaks to the public internet with no account. Fix: authenticate first, then collapse every "you cannot use this tenant" outcome into one identical `403`.
 2. **Remove the 2-minute tenant cache.** `TenantRegistry.FindBySlugAsync` caches the Active-only lookup for `CacheTtl = 2 min`, so a **suspended tenant keeps working for up to 2 minutes**. The same cache also stores `null`, so **a newly created tenant is unresolvable for up to 2 minutes**. Owner decision: **Option A — remove the cache entirely.** Correctness at a security boundary beats a micro-optimisation; the lookup is one indexed row on a unique column.
 3. **Tighten the tenant-agnostic allowlist** so it cannot become a hole: remove entries with no backing endpoint, and stop treating directories as tenant-agnostic files.
 4. **Make the continuity cookie tamper-resistant and correct**: only clear it when the cookie itself was the failing hint, clear it consistently, and emit `Secure` correctly behind a TLS-terminating proxy.
 5. **Kill the assembly-wide EF configuration landmine** (found during REQ-003, in REQ-002's file): `ControlPlaneDbContext.OnModelCreating` calls `builder.ApplyConfigurationsFromAssembly(typeof(ControlPlaneDbContext).Assembly)` with **no namespace filter**. Any `IEntityTypeConfiguration<T>` added anywhere in `Acentra.Infrastructure` is therefore pulled into the **control-plane** model. REQ-003 hit this for real: adding the four tenant configurations made EF pull `Product`/`StockLevel`/`StockMovement`/`TenantFile` into the control-plane model, which failed `PendingModelChangesWarning` at startup and broke 15 integration tests. REQ-003 dodged it by making its configurations explicit static appliers instead of `IEntityTypeConfiguration<T>` — a workaround, not a fix. Restore normal EF conventions by **filtering the discovery to the `Acentra.Infrastructure.ControlPlane.Configurations` namespace**.
+6. **Pin the slug→database routing convention** (found during Overseer review of REQ-003). `TenantDbContextFactory` derives the tenant database name **two different ways**: `Create()` uses `TenantDatabaseName.FromSlug(_tenant.Slug)` (the request path) while `CreateForTenant(descriptor)` uses `TenantDatabaseName.Normalize(descriptor.DatabaseName)` (the provisioning path). The request path therefore **ignores the authoritative `Tenant.DatabaseName` column** — forced by the frozen `ITenantContext` contract, which carries only `TenantId` and `Slug`. Two places must now agree on the naming rule forever, and a divergence would connect the request path to a wrong or nonexistent database. The query filter contains the blast radius (a wrong database returns zero rows rather than another tenant's data), but it fails **silently**, which is not good enough. **Owner decision: do NOT change the frozen Domain contract.** Instead pin the convention with a test and document it as part of the routing contract, so divergence fails loudly at test time rather than quietly at runtime.
 
 **Owner directive driving this plan:** *maximum production-ready application, with proper isolation security — never compromise it.* Where a choice trades debuggability or convenience against isolation correctness, isolation wins.
 
 ## 2. Scope
 
 - **Allowed Files/Directories:** `src/Acentra.Infrastructure/ControlPlane/TenantRegistry.cs`, `src/Acentra.Infrastructure/ControlPlane/ServiceCollectionExtensions.cs`, `src/Acentra.Web/Middleware/**`, `src/Acentra.Web/Auth/**`, `src/Acentra.Web/Program.cs`, `src/Acentra.Web/appsettings*.json`, `tests/Acentra.IntegrationTests/TenantResolution*.cs`.
-- **In-Scope:** the five changes above, plus updating the REQ-002 tests that assert the old status codes.
+- **In-Scope:** the six changes above, plus updating the REQ-002 tests that assert the old status codes.
 - **Out of Scope:** `TenantData/**` (REQ-003), `Storage/**` (REQ-004), inventory UI (REQ-005), circuit re-authorization (REQ-009), the isolation matrix proper (REQ-006).
 
 **Expected File/Component Changes:**
@@ -37,6 +38,8 @@ Four approved changes, ordered by importance:
 | `src/Acentra.Web/Program.cs` | Modify | `UseForwardedHeaders` when enabled (must be first) |
 | `src/Acentra.Web/appsettings*.json` | Modify | `ForwardedHeaders:Enabled` (default false) |
 | `tests/Acentra.IntegrationTests/TenantResolution*.cs` | Modify + add | new semantics; keep all coverage |
+| `tests/Acentra.IntegrationTests/TenantRoutingConventionTests.cs` | Add | pins `FromSlug(slug) == DatabaseName` for every registered tenant |
+| `docs/architecture.md` (§5.1/§5.4) | Modify | state the slug→database naming rule as part of the routing contract |
 
 ## 3. Current Architecture / Context
 
@@ -121,6 +124,15 @@ Cookie rules:
 - Without this, `Request.IsHttps` is false behind a TLS-terminating proxy and the continuity cookie is emitted **without `Secure`**.
 - Do not enable it by default in Development; document it.
 
+### 4.7 Slug → database routing contract (pin, do not reconstruct)
+
+- `TenantDatabaseName.FromSlug(slug)` is **the** rule that maps a request's tenant to a database. It must equal the `Tenant.DatabaseName` value written by the seeder/provisioner for every tenant, always.
+- Add a test that, for **every** tenant row in the control-plane database, asserts `TenantDatabaseName.FromSlug(tenant.Slug) == tenant.DatabaseName`. It must iterate real seeded rows (including `acme` and `globex`), not hardcoded pairs, so a new tenant with a divergent name fails the suite.
+- Add a second assertion that the provisioning path agrees with the request path: `TenantDatabaseName.Normalize(descriptor.DatabaseName) == TenantDatabaseName.FromSlug(descriptor.Slug)`.
+- If either assertion fails, that is a **real finding** — report it rather than "fixing" it by loosening the test or editing the seeder.
+- Document the rule in `docs/architecture.md` §5.1/§5.4 so it is an explicit part of the routing contract rather than tribal knowledge living in two mutually-dependent code paths.
+- **Do NOT** change `ITenantContext`, `TenantDescriptor` or any other frozen Domain contract to carry `DatabaseName`. That stronger option was considered and declined by the owner in favour of the pinned test.
+
 ## 5. Step-by-Step Implementation Plan
 
 1. Introduce `TenantHint`/`TenantHintSource`; update `ITenantResolver` and the four resolvers.
@@ -149,6 +161,8 @@ Cookie rules:
 - [ ] `TenantRegistry` no longer references `IMemoryCache`; `CacheTtl`/`CacheKeyPrefix` are gone.
 - [ ] `ApplyConfigurationsFromAssembly` is namespace-filtered to `ControlPlane.Configurations`. Proof required: adding a throwaway `IEntityTypeConfiguration<T>` in a different namespace does **not** change the control-plane model (`has-pending-model-changes --context ControlPlaneDbContext` stays clean), and `ControlPlaneModel_DoesNotIncludeTenantDataEntities` (added by REQ-003) still passes. Delete the throwaway afterwards.
 - [ ] `dotnet ef migrations has-pending-model-changes --context ControlPlaneDbContext` and `--context AppDbContext` are both clean after the change.
+- [ ] A test iterates **every** tenant row and asserts `TenantDatabaseName.FromSlug(Slug) == DatabaseName`, and that `Normalize(DatabaseName) == FromSlug(Slug)`. Adding a tenant whose stored name does not follow the convention must fail the suite.
+- [ ] `docs/architecture.md` states the slug→database naming rule as part of the routing contract.
 - [ ] With `ForwardedHeaders:Enabled=true` and `X-Forwarded-Proto: https`, the continuity cookie is emitted with `Secure`.
 
 **Required Tests / Demonstrated Behavior:** the byte-identical assertions are the core deliverable — they are what makes "no oracle" a fact rather than a claim. Compare full response bodies, not just codes.

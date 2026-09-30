@@ -16,9 +16,10 @@ Requirement #10 says tenant files go to S3. There is no AWS account, so:
 
 ## 2. Scope
 
-- **Allowed Files/Directories:** `src/Acentra.Infrastructure/Storage/**`, `src/Acentra.Infrastructure/TenantData/Configurations/TenantFileConfiguration.cs`, `compose.yaml` (minio service only), `.gitignore` (`storage/`), `src/Acentra.Web/appsettings*.json` (`Storage` section).
-- **In-Scope:** `IFileStorage` implementation(s), `StorageOptions` binding, `TenantFile` EF configuration, key builder, filename sanitiser, provider selection.
-- **Out of Scope:** the Blazor upload UI (REQ-005 wires a page to the service), query filters / context plumbing (REQ-003), auth (REQ-002).
+- **Allowed Files/Directories:** `src/Acentra.Infrastructure/Storage/**`, `compose.yaml` (minio service only), `.gitignore` (`storage/` + `.pi-lens-probe-home/`), `src/Acentra.Web/appsettings*.json` (`Storage` section).
+- **NOT your files — do not edit:** `src/Acentra.Infrastructure/TenantData/**` (REQ-003 owns it, **including** `TenantData/Configurations/TenantFileConfiguration.cs`, which is already written and migrated), `src/Acentra.Infrastructure/ControlPlane/**`, `src/Acentra.Infrastructure/Inventory/**`, `src/Acentra.Web/**`, `Migrations/**`.
+- **In-Scope:** `IFileStorage` implementation(s), `StorageOptions` binding, key builder, filename sanitiser, provider selection, and the `minio` service in `compose.yaml`.
+- **Out of Scope:** the `TenantFile` EF configuration (REQ-003, already done), the Blazor upload UI (REQ-005 wires a page to the service), query filters / context plumbing (REQ-003), auth (REQ-002).
 
 **Expected File/Component Changes:**
 
@@ -29,7 +30,7 @@ Requirement #10 says tenant files go to S3. There is no AWS account, so:
 | `src/Acentra.Infrastructure/Storage/StorageKeyBuilder.cs` | Add | shared key layout + sanitisation |
 | `src/Acentra.Infrastructure/Storage/StorageOptions.cs` | Add | bound configuration |
 | `src/Acentra.Infrastructure/Storage/ServiceCollectionExtensions.cs` | Complete stub | `AddFileStorage` provider switch |
-| `src/Acentra.Infrastructure/TenantData/Configurations/TenantFileConfiguration.cs` | Add | unique `(TenantId, Key)` |
+| `src/Acentra.Infrastructure/TenantData/Configurations/TenantFileConfiguration.cs` | **REQ-003 owns this** | unique `(TenantId, Key)` — already implemented and migrated; do not touch |
 | `compose.yaml` | Modify | `minio` service + volume |
 | `.gitignore` | Verify `storage/` | keep uploads out of git |
 | `src/Acentra.Web/appsettings*.json` | Modify | `Storage` defaults for dev |
