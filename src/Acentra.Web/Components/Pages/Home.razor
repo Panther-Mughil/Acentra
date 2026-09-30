@@ -1,7 +1,7 @@
 @*
     The `/` route is on the tenant-agnostic allowlist, so this page can render with NO tenant
     resolved (an unauthenticated visitor, for instance). Everything it shows about a tenant comes
-    from the circuit's authorized tenant via TenantStateService — and the product counts come from
+    from the circuit's authorized tenant via TenantStateService - and the product counts come from
     the real, tenant-scoped IInventoryService, loaded only when a tenant is resolved. The remaining
     figures (purchase orders, security events, the charts) are illustrative demo content: there is
     no backend for them, and the note below says so rather than implying otherwise.
@@ -49,7 +49,7 @@
 {
     <div class="alert alert-secondary" role="alert">
         <strong>No tenant selected.</strong> Choose a tenant from the switcher to see that tenant's
-        inventory. This page shows no data until then — an unresolved tenant never means "every".
+        inventory. This page shows no data until then - an unresolved tenant never means "every".
     </div>
 }
 
@@ -57,7 +57,7 @@
     <IconSvg Name="help" Size="15" />
     <span>
         Product counts are read live from this tenant's own inventory. The purchase-order, security
-        and chart figures on this overview are illustrative demo content — no backend serves them.
+        and chart figures on this overview are illustrative demo content - no backend serves them.
     </span>
 </div>
 
@@ -156,7 +156,7 @@
                 <div class="card-subtitle-sm">Overall stock condition across 8 departments</div>
             </div>
             <a href="inventory" style="font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                View inventory →
+                View inventory <IconSvg Name="arrow-right" Size="14" />
             </a>
         </div>
 
@@ -234,7 +234,7 @@
             <div style="display: flex; background: var(--surface-subtle); border-radius: 8px; padding: 3px; gap: 2px; border: 1px solid var(--border-subtle);">
                 @foreach (var tf in timeFilters)
                 {
-                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; border-radius: 6px; border: none; background: @(selectedTimeFilter == tf ? "#FFFFFF" : "transparent"); color: @(selectedTimeFilter == tf ? "var(--navy-900)" : "var(--text-muted)"); box-shadow: @(selectedTimeFilter == tf ? "var(--shadow-sm)" : "none");"
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; border-radius: 6px; border: none; background: @(selectedTimeFilter == tf ? "var(--surface-elevated)" : "transparent"); color: @(selectedTimeFilter == tf ? "var(--navy-900)" : "var(--text-muted)"); box-shadow: @(selectedTimeFilter == tf ? "var(--shadow-sm)" : "none");"
                             @onclick="() => selectedTimeFilter = tf">
                         @tf
                     </button>
@@ -337,7 +337,7 @@
             <div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-size: 11.5px; font-weight: 700; color: var(--amber-600); display: flex; align-items: center; gap: 4px;">
-                        <IconSvg Name="warning" Size="14" /> ⚠ Reorder Recommended
+                        <IconSvg Name="warning" Size="14" /> Reorder Recommended
                     </span>
                     <span class="sku-badge">MED-2048</span>
                 </div>
@@ -345,7 +345,7 @@
                 <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
                     Current stock is <strong>1,240 boxes</strong>. Estimated remaining runway is <strong>6 days</strong> based on 8 ICU consumption rate.
                 </p>
-                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
                     <span style="color: var(--text-muted);">Recommended order:</span>
                     <strong style="color: var(--blue-600);">5,000 units (HealthSupply)</strong>
                 </div>
@@ -360,7 +360,7 @@
             <div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-size: 11.5px; font-weight: 700; color: var(--green-700); display: flex; align-items: center; gap: 4px;">
-                        <IconSvg Name="check" Size="14" /> ✓ Optimization Opportunity
+                        <IconSvg Name="check" Size="14" /> Optimization Opportunity
                     </span>
                     <span class="status-badge healthy" style="font-size: 10.5px; padding: 2px 6px;">Logistics</span>
                 </div>
@@ -368,7 +368,7 @@
                 <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
                     3 primary suppliers have overlapping delivery schedules for Chennai Central Hospital next Tuesday.
                 </p>
-                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
                     <span style="color: var(--text-muted);">Potential monthly saving:</span>
                     <strong style="color: var(--green-700);">₹42,000 / month</strong>
                 </div>
@@ -383,7 +383,7 @@
             <div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <span style="font-size: 11.5px; font-weight: 700; color: var(--teal-700); display: flex; align-items: center; gap: 4px;">
-                        <IconSvg Name="shield-check" Size="14" /> 🔒 Cold-Chain Compliance
+                        <IconSvg Name="shield-check" Size="14" /> Cold-Chain Compliance
                     </span>
                     <span class="sku-badge">MED-8810</span>
                 </div>
@@ -391,7 +391,7 @@
                 <p style="font-size: 12.5px; color: var(--text-main); margin-bottom: 12px; line-height: 1.4;">
                     Continuous IoT sensor telemetry confirms 100% temperature compliance (4.2°C) with zero thermal excursion events in last 30 days.
                 </p>
-                <div style="background-color: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
+                <div style="background-color: var(--surface-subtle); border: 1px solid var(--border-subtle); border-radius: var(--border-radius-sm); padding: 8px 12px; font-size: 12px; margin-bottom: 14px; display: flex; justify-content: space-between;">
                     <span style="color: var(--text-muted);">Thermal Compliance:</span>
                     <strong style="color: var(--teal-700);">100.0% Compliant</strong>
                 </div>
@@ -412,13 +412,13 @@
                 <div class="card-title-lg">Recent Operations Activity</div>
                 <div class="card-subtitle-sm">Live audit events for @TenantService.CurrentTenant.Name</div>
             </div>
-            <a href="audit-logs" style="font-size: 13px; font-weight: 600;">View all logs →</a>
+            <a href="audit-logs" style="font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">View all logs <IconSvg Name="arrow-right" Size="14" /></a>
         </div>
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div style="display: flex; gap: 12px; font-size: 12.5px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
                 <div style="font-weight: 700; color: var(--blue-600); min-width: 65px;">10:42 AM</div>
                 <div>
-                    <strong>Jagadeesh</strong> updated inventory for <em>Surgical Gloves</em> (1,500 → 1,240).
+                    <strong>Jagadeesh</strong> updated inventory for <em>Surgical Gloves</em> (1,500 to 1,240).
                     <div style="font-size: 11px; color: var(--text-light);">IP: 192.168.1.104 • Ward Distribution</div>
                 </div>
             </div>
@@ -449,7 +449,7 @@
                 <div class="card-subtitle-sm" style="color: #94A3B8;">Active KMS Envelope Protection</div>
             </div>
             <span class="status-badge active-policy" style="background-color: rgba(0, 166, 166, 0.2); color: #22C7D6; border-color: rgba(0, 166, 166, 0.4);">
-                ● Active
+                <span class="status-dot"></span>Active
             </span>
         </div>
 
@@ -509,7 +509,7 @@
 
     private async Task RefreshMetricsAsync()
     {
-        // No resolved tenant — the `/` route is tenant-agnostic — means no rows and no query: an
+        // No resolved tenant - the `/` route is tenant-agnostic - means no rows and no query: an
         // unresolved tenant is never "all tenants".
         if (!Tenant.IsResolved)
         {

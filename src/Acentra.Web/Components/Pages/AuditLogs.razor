@@ -22,7 +22,7 @@
             <IconSvg Name="download" Size="14" /> Export Ledger CSV
         </button>
         <button class="btn-org @(isLiveStreamActive ? "btn-org-teal" : "btn-org-secondary")" @onclick="ToggleLiveStream">
-            <IconSvg Name="refresh" Size="14" /> @(isLiveStreamActive ? "● Live Stream Active" : "Start Live Feed")
+            <IconSvg Name="refresh" Size="14" /> @(isLiveStreamActive ? "Live Stream Active" : "Start Live Feed")
         </button>
     </div>
 </div>
@@ -129,7 +129,7 @@
                                 {
                                     <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 11px; font-family: monospace;">
                                         <span style="color: var(--red-600); text-decoration: line-through;">@log.PreviousState</span>
-                                        <span style="color: var(--text-muted);">→</span>
+                                        <span style="color: var(--text-muted); display: inline-flex;"><IconSvg Name="arrow-right" Size="12" /></span>
                                         <span style="color: var(--green-700); font-weight: 700;">@log.NewState</span>
                                     </div>
                                 }

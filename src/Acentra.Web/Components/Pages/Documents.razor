@@ -29,7 +29,7 @@
     <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--blue-600); @(selectedCategory == "Invoices" ? "border-color: var(--blue-600); background-color: var(--blue-50);" : "")"
          @onclick='() => selectedCategory = (selectedCategory == "Invoices" ? "" : "Invoices")'>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 24px;">📁</span>
+            <span style="color: var(--blue-600);"><IconSvg Name="folder" Size="24" /></span>
             <div>
                 <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Invoices</div>
                 <div style="font-size: 12px; color: var(--text-muted);">124 documents</div>
@@ -41,7 +41,7 @@
     <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--teal-600); @(selectedCategory == "Purchase Orders" ? "border-color: var(--teal-600); background-color: var(--teal-50);" : "")"
          @onclick='() => selectedCategory = (selectedCategory == "Purchase Orders" ? "" : "Purchase Orders")'>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 24px;">📁</span>
+            <span style="color: var(--blue-600);"><IconSvg Name="folder" Size="24" /></span>
             <div>
                 <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Purchase Orders</div>
                 <div style="font-size: 12px; color: var(--text-muted);">82 documents</div>
@@ -53,7 +53,7 @@
     <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--amber-500); @(selectedCategory == "Compliance" ? "border-color: var(--amber-500); background-color: var(--amber-50);" : "")"
          @onclick='() => selectedCategory = (selectedCategory == "Compliance" ? "" : "Compliance")'>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 24px;">📁</span>
+            <span style="color: var(--blue-600);"><IconSvg Name="folder" Size="24" /></span>
             <div>
                 <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Compliance</div>
                 <div style="font-size: 12px; color: var(--text-muted);">36 documents</div>
@@ -65,7 +65,7 @@
     <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--cyan-500); @(selectedCategory == "Product Documents" ? "border-color: var(--cyan-500); background-color: var(--cyan-50);" : "")"
          @onclick='() => selectedCategory = (selectedCategory == "Product Documents" ? "" : "Product Documents")'>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 24px;">📁</span>
+            <span style="color: var(--blue-600);"><IconSvg Name="folder" Size="24" /></span>
             <div>
                 <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Product Documents</div>
                 <div style="font-size: 12px; color: var(--text-muted);">45 documents</div>
@@ -77,7 +77,7 @@
     <div class="org-card" style="cursor: pointer; border-top: 3px solid var(--navy-700); @(selectedCategory == "Reports" ? "border-color: var(--navy-700); background-color: var(--surface-hover);" : "")"
          @onclick='() => selectedCategory = (selectedCategory == "Reports" ? "" : "Reports")'>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <span style="font-size: 24px;">📁</span>
+            <span style="color: var(--blue-600);"><IconSvg Name="folder" Size="24" /></span>
             <div>
                 <div style="font-weight: 700; font-size: 14px; color: var(--navy-900);">Reports</div>
                 <div style="font-size: 12px; color: var(--text-muted);">18 documents</div>
@@ -208,7 +208,7 @@
 
             <div class="modal-body-org" style="background-color: var(--surface-subtle); padding: 24px;">
                 <!-- Simulated PDF Container -->
-                <div style="background: #FFFFFF; border: 1px solid var(--border-medium); border-radius: 8px; padding: 28px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
+                <div style="background: var(--surface-subtle); border: 1px solid var(--border-medium); border-radius: 8px; padding: 28px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
                     <!-- Watermark -->
                     <div style="position: absolute; top: 40%; left: 10%; transform: rotate(-30deg); font-size: 32px; font-weight: 800; color: rgba(11, 31, 51, 0.05); text-transform: uppercase; pointer-events: none;">
                         @TenantService.CurrentTenant.Name • CONFIDENTIAL
@@ -227,9 +227,13 @@
                         <p><strong>Security Classification:</strong> @previewDoc.SecurityBadge (Isolated AES-256 KMS Key: <code>@TenantService.CurrentTenant.EncryptionKeyId</code>)</p>
                         <p><strong>Storage URI:</strong> <code style="font-size: 11px; color: var(--blue-600);">@previewDoc.S3StoragePath</code></p>
                         <p><strong>Cryptographic SHA-256 Digest:</strong> <code style="font-size: 11px;">@previewDoc.Sha256Hash</code></p>
-                        <div style="margin-top: 18px; padding: 14px; background: var(--surface-subtle); border-radius: 6px; font-size: 12px; color: var(--text-muted);">
-                            ✓ Certified by Healthcare Regulatory Audit Board.<br />
-                            ✓ Access verified for User Jagadeesh (Platform Administrator).
+                        <div style="margin-top: 18px; padding: 14px; background: var(--surface-subtle); border-radius: 8px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px;">
+                            <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--green-700);">
+                                <IconSvg Name="check" Size="13" /> Certified by Healthcare Regulatory Audit Board.
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--green-700);">
+                                <IconSvg Name="check" Size="13" /> Access verified for User Jagadeesh (Platform Administrator).
+                            </span>
                         </div>
                     </div>
                 </div>

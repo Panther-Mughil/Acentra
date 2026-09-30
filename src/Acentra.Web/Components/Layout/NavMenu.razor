@@ -125,8 +125,8 @@
 </div>
 
 @code {
-    // Only shown for a resolved tenant — an unresolved circuit has no hint to navigate with and a
-    // tenant-scoped URL without one fails closed upstream — and always carries the hint so the
+    // Only shown for a resolved tenant - an unresolved circuit has no hint to navigate with and a
+    // tenant-scoped URL without one fails closed upstream - and always carries the hint so the
     // selection is explicit rather than implied by the continuity cookie.
     private string ProductsHref =>
         $"/inventory/products?{TenantResolutionConstants.QueryKey}={Uri.EscapeDataString(Tenant.Slug)}";

@@ -53,7 +53,7 @@
     {
         @foreach (var alert in FilteredAlerts)
         {
-            <div class="org-card" style="padding: 18px 22px; border-left: 4px solid @GetSeverityBorderColor(alert.Severity); background-color: @(alert.IsRead ? "#FFFFFF" : "var(--surface-subtle)"); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+            <div class="org-card" style="padding: 18px 22px; border-left: 4px solid @GetSeverityBorderColor(alert.Severity); background-color: @(alert.IsRead ? "var(--surface-subtle)" : "var(--surface-hover)"); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
                 <div style="display: flex; gap: 14px; align-items: flex-start;">
                     <div style="margin-top: 2px;">
                         @switch (alert.Severity)

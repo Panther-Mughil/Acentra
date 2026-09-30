@@ -163,31 +163,31 @@
             </div>
 
             <!-- Progression Steps Bar -->
-            <div style="background-color: #FFFFFF; padding: 18px 24px; border-bottom: 1px solid var(--border-subtle);">
+            <div style="background-color: var(--surface-subtle); padding: 18px 24px; border-bottom: 1px solid var(--border-subtle);">
                 <div style="display: flex; justify-content: space-between; position: relative;">
                     <!-- Line -->
                     <div style="position: absolute; top: 12px; left: 20px; right: 20px; height: 2px; background: #E2E8F0; z-index: 1;"></div>
                     
                     <!-- Steps -->
                     <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
-                        <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--green-600); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">✓</div>
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--green-600); color: #04140C; display: flex; align-items: center; justify-content: center; font-size: 12px;"><IconSvg Name="check" Size="14" /></div>
                         <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Drafted</span>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
-                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Approved ? "var(--green-600)" : "var(--amber-500)"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
-                            @(activeOrder.Status >= OrderStatus.Approved ? "✓" : "2")
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Approved ? "var(--green-600)" : "var(--amber-500)"); color: #04140C; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @if (activeOrder.Status >= OrderStatus.Approved) { <IconSvg Name="check" Size="14" /> } else { @("2") }
                         </div>
                         <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Approved</span>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
-                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Ordered ? "var(--green-600)" : "#CBD5E1"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
-                            @(activeOrder.Status >= OrderStatus.Ordered ? "✓" : "3")
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status >= OrderStatus.Ordered ? "var(--green-600)" : "var(--border-medium)"); color: #04140C; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @if (activeOrder.Status >= OrderStatus.Ordered) { <IconSvg Name="check" Size="14" /> } else { @("3") }
                         </div>
                         <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Dispatched</span>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; z-index: 2; gap: 4px;">
-                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status == OrderStatus.Completed ? "var(--green-600)" : "#CBD5E1"); color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 12px;">
-                            @(activeOrder.Status == OrderStatus.Completed ? "✓" : "4")
+                        <div style="width: 26px; height: 26px; border-radius: 50%; background: @(activeOrder.Status == OrderStatus.Completed ? "var(--green-600)" : "var(--border-medium)"); color: #04140C; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            @if (activeOrder.Status == OrderStatus.Completed) { <IconSvg Name="check" Size="14" /> } else { @("4") }
                         </div>
                         <span style="font-size: 11px; font-weight: 600; color: var(--navy-900);">Received</span>
                     </div>
@@ -310,7 +310,7 @@
                     <select class="form-select-org" @bind="selectedCatalogItemId" @bind:after="UpdateItemPrice">
                         @foreach (var itm in DemoInventoryService.GetItems())
                         {
-                            <option value="@itm.Id">@itm.Name (@itm.Sku) — Current: @itm.CurrentStock</option>
+                            <option value="@itm.Id">@itm.Name (@itm.Sku) - Current: @itm.CurrentStock</option>
                         }
                     </select>
                 </div>

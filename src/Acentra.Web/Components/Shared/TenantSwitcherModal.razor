@@ -2,7 +2,7 @@
     The TopHeader's organisation switcher (REQ-005 requirement #8).
 
     It is deliberately NOT the demo modal it started as: the list comes from
-    TenantStateService.AvailableTenants, which is populated from ITenantRegistry.FindForUserAsync —
+    TenantStateService.AvailableTenants, which is populated from ITenantRegistry.FindForUserAsync:
     the signed-in user's *memberships*, never a client-supplied list. Selecting an entry mutates the
     circuit's TenantState and then persists the choice through the REQ-008 `?tenant=` hint with a
     forced reload, exactly like the sidebar select, so the middleware re-authorizes it and the
@@ -20,7 +20,7 @@
         <div class="modal-content-org" @onclick:stopPropagation style="max-width: 540px;">
             <div class="modal-header-org">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--navy-900); color: #FFF; display: flex; align-items: center; justify-content: center;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #3D8BFF 0%, #7C5CFF 100%); color: #FFF; display: flex; align-items: center; justify-content: center;">
                         <IconSvg Name="tenant" Size="18" />
                     </div>
                     <div>
@@ -55,7 +55,7 @@
                         @foreach (var tenant in FilteredTenants)
                         {
                             var isCurrent = tenant.Id == TenantService.CurrentTenant.Id;
-                            <div style="border: 1.5px solid @(isCurrent ? "var(--blue-600)" : "var(--border-subtle)"); background-color: @(isCurrent ? "var(--blue-50)" : "#FFFFFF"); border-radius: var(--border-radius-md); padding: 14px; cursor: pointer; transition: all var(--transition-fast);"
+                            <div style="border: 1.5px solid @(isCurrent ? "var(--blue-600)" : "var(--border-subtle)"); background-color: @(isCurrent ? "var(--blue-50)" : "var(--surface-subtle)"); border-radius: var(--border-radius-md); padding: 14px; cursor: pointer; transition: all var(--transition-fast);"
                                  @onclick="() => SelectTenant(tenant.Id)">
                                 <div style="display: flex; align-items: center; justify-content: space-between;">
                                     <div style="display: flex; align-items: center; gap: 12px;">

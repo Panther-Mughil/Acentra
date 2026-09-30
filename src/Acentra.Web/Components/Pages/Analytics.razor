@@ -19,7 +19,7 @@
 
     <!-- Time Filter Pills -->
     <div class="page-actions-group">
-        <div style="display: flex; background: #FFFFFF; border-radius: var(--border-radius-md); padding: 4px; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); gap: 4px;">
+        <div style="display: flex; background: var(--surface-subtle); border-radius: var(--border-radius-md); padding: 4px; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); gap: 4px;">
             @foreach (var tf in new[] { "7D", "30D", "90D", "12M", "Custom" })
             {
                 <button class="btn btn-sm" style="padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: none; background: @(selectedTimeRange == tf ? "var(--blue-600)" : "transparent"); color: @(selectedTimeRange == tf ? "#FFFFFF" : "var(--text-muted)");"

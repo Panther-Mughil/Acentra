@@ -5,7 +5,7 @@
     The tenant switcher is the authoritative one (REQ-005 requirement #8): it lists only the
     signed-in user's memberships, mutates the circuit's TenantState and persists the choice
     through the REQ-008 query hint, so it survives a reload. The TopHeader's organisation pill
-    drives the same real path — it is not a second, decoration-only switcher.
+    drives the same real path - it is not a second, decoration-only switcher.
 *@
 @inherits LayoutComponentBase
 @inject IJSRuntime JS
@@ -41,7 +41,7 @@
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss"><IconSvg Name="close" Size="16" /></span>
 </div>
 
 <style>
