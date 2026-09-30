@@ -27,7 +27,6 @@ public static class ServiceCollectionExtensions
                 connectionString,
                 npgsql => npgsql.MigrationsAssembly(MigrationsAssembly)));
 
-        services.AddMemoryCache();
         services.AddScoped<ITenantRegistry, TenantRegistry>();
 
         // Identity *core* lives here (provider-agnostic). The authentication schemes and

@@ -8,7 +8,7 @@ namespace Acentra.Web.Auth;
 /// </summary>
 public sealed class QueryTenantResolver : ITenantResolver
 {
-    public string? Resolve(HttpContext context)
+    public TenantHint Resolve(HttpContext context)
     {
         if (context.Request.Query.TryGetValue(TenantResolutionConstants.QueryKey, out var values))
         {
@@ -16,10 +16,10 @@ public sealed class QueryTenantResolver : ITenantResolver
 
             if (!string.IsNullOrEmpty(slug))
             {
-                return slug;
+                return new TenantHint(slug, TenantHintSource.Query);
             }
         }
 
-        return null;
+        return new TenantHint(null, TenantHintSource.None);
     }
 }

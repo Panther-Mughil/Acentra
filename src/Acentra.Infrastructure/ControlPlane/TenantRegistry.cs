@@ -1,23 +1,23 @@
 using Acentra.Domain.Abstractions;
 using Acentra.Infrastructure.ControlPlane.Configurations;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 namespace Acentra.Infrastructure.ControlPlane;
 
 /// <summary>
-/// Control-plane lookup of tenants by slug, cached by normalised slug.
-/// Only <see cref="TenantStatus.Active"/> tenants are ever resolvable, so a suspended
-/// tenant fails closed (treated as unknown) rather than leaking a routing decision.
+/// Control-plane lookup of tenants by slug. Deliberately <em>uncached</em>: this is an
+/// authorization input, so a newly created tenant must resolve on the very next request and a
+/// suspended tenant must stop resolving on the very next request. The lookup is a single query on
+/// a unique, indexed column, so correctness at the security boundary wins over a micro-optimisation.
+///
+/// Only <see cref="TenantStatus.Active"/> tenants are ever resolvable; a suspended tenant fails
+/// closed (treated as unknown by the caller) and the precise cause is logged here.
 /// </summary>
 public sealed class TenantRegistry(
     ControlPlaneDbContext db,
-    IMemoryCache cache) : ITenantRegistry
+    ILogger<TenantRegistry> logger) : ITenantRegistry
 {
-    public static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(2);
-
-    private const string CacheKeyPrefix = "controlplane:tenant:slug:";
-
     public async Task<TenantDescriptor?> FindBySlugAsync(string slug, CancellationToken ct)
     {
         var normalized = TenantSlug.TryNormalize(slug);
@@ -26,22 +26,29 @@ public sealed class TenantRegistry(
             return null;
         }
 
-        var descriptor = await cache.GetOrCreateAsync(
-            CacheKeyPrefix + normalized,
-            async entry =>
-            {
-                entry.AbsoluteExpirationRelativeToNow = CacheTtl;
+        // One query either way (and it carries Status), so distinguishing "unknown" from
+        // "suspended" in the log costs no extra work and cannot skew response timing.
+        var row = await db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Slug == normalized)
+            .Select(t => new { t.Id, t.Slug, t.Name, t.DatabaseName, t.Status })
+            .FirstOrDefaultAsync(ct);
 
-                var tenant = await db.Tenants
-                    .AsNoTracking()
-                    .Where(t => t.Slug == normalized && t.Status == TenantStatus.Active)
-                    .Select(t => new TenantDescriptor(t.Id, t.Slug, t.Name, t.DatabaseName))
-                    .FirstOrDefaultAsync(ct);
+        if (row is null)
+        {
+            logger.LogWarning("Tenant lookup miss: no tenant with slug '{Slug}'.", normalized);
+            return null;
+        }
 
-                return tenant;
-            });
+        if (!string.Equals(row.Status, TenantStatus.Active, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Tenant '{Slug}' is not active (status '{Status}'); treated as unresolvable.",
+                normalized, row.Status);
+            return null;
+        }
 
-        return descriptor;
+        return new TenantDescriptor(row.Id, row.Slug, row.Name, row.DatabaseName);
     }
 
     public async Task<IReadOnlyList<TenantDescriptor>> FindForUserAsync(Guid userId, CancellationToken ct)

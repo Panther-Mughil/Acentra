@@ -6,7 +6,7 @@ namespace Acentra.Web.Auth;
 /// <summary>Default hint: the <c>X-Tenant</c> header. Highest precedence.</summary>
 public sealed class HeaderTenantResolver : ITenantResolver
 {
-    public string? Resolve(HttpContext context)
+    public TenantHint Resolve(HttpContext context)
     {
         if (context.Request.Headers.TryGetValue(TenantResolutionConstants.HeaderName, out StringValues values))
         {
@@ -14,10 +14,10 @@ public sealed class HeaderTenantResolver : ITenantResolver
 
             if (!string.IsNullOrEmpty(slug))
             {
-                return slug;
+                return new TenantHint(slug, TenantHintSource.Header);
             }
         }
 
-        return null;
+        return new TenantHint(null, TenantHintSource.None);
     }
 }

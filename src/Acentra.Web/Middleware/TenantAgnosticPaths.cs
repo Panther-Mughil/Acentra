@@ -24,9 +24,7 @@ public static class TenantAgnosticPaths
         "/lib",
         "/Account",
         "/Error",
-        "/not-found",
-        "/health",
-        "/.well-known"
+        "/not-found"
     ];
 
     /// <summary>
@@ -73,9 +71,10 @@ public static class TenantAgnosticPaths
 
         // A request that maps to a real static file (favicon, css, js, fonts, wasm, …) is not
         // tenant-scoped. Checked through the file provider rather than a extension allowlist so
-        // nothing can slip through on an unanticipated extension.
+        // nothing can slip through on an unanticipated extension. A *directory* is never a file:
+        // `Exists` alone is also true for directories, which would make a whole tree agnostic.
         var file = environment.WebRootFileProvider?.GetFileInfo(value);
-        return file is { Exists: true };
+        return file is { Exists: true, IsDirectory: false };
     }
 
     private static bool MatchesPrefix(string path, string prefix) =>

@@ -8,20 +8,20 @@ namespace Acentra.Web.Auth;
 /// </summary>
 public sealed class SubdomainTenantResolver : ITenantResolver
 {
-    public string? Resolve(HttpContext context)
+    public TenantHint Resolve(HttpContext context)
     {
         var host = context.Request.Host.Host;
 
         if (string.IsNullOrWhiteSpace(host))
         {
-            return null;
+            return new TenantHint(null, TenantHintSource.None);
         }
 
         var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (labels.Length < 3)
         {
-            return null;
+            return new TenantHint(null, TenantHintSource.None);
         }
 
         var candidate = labels[0];
@@ -29,9 +29,9 @@ public sealed class SubdomainTenantResolver : ITenantResolver
         // "www.acme.inventory.app" must not resolve to a tenant called "www".
         if (string.Equals(candidate, "www", StringComparison.OrdinalIgnoreCase))
         {
-            return null;
+            return new TenantHint(null, TenantHintSource.None);
         }
 
-        return candidate;
+        return new TenantHint(candidate, TenantHintSource.Subdomain);
     }
 }

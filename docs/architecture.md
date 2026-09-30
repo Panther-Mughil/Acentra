@@ -123,26 +123,33 @@ Tenant resolution must run **after** authentication so it can validate the reque
 
 ## 4. Tenant resolution
 
-**Decision: header `X-Tenant` is the default hint**, with a JWT claim authoritative once auth exists. `ITenantResolver` keeps the strategies pluggable:
+**Decision: header `X-Tenant` is the default hint**, with a JWT claim authoritative once auth exists. `ITenantResolver` keeps the strategies pluggable, and each resolver returns a `TenantHint` that carries **which surface the value came from** (`TenantHintSource`: None/Header/Query/Subdomain/Cookie) so the middleware can clear the continuity cookie only when the *cookie itself* was the failing hint:
 
-| Strategy | Example | Notes |
-| --- | --- | --- |
-| Header | `X-Tenant: acme` | **Chosen default.** Simplest to test from the API and the UI |
-| Subdomain | `acme.inventory.app` | Natural for browser apps; needs wildcard DNS/cert |
-| JWT claim | `tenant_id: acme` | Strongest — user can't self-select a foreign tenant. Becomes authoritative when auth lands |
+| Strategy | Source | Example | Notes |
+| --- | --- | --- | --- |
+| Header | `Header` | `X-Tenant: acme` | **Chosen default.** Simplest to test from the API and the UI |
+| Query | `Query` | `?tenant=acme` | JS-free switch and HTTP-testable |
+| Subdomain | `Subdomain` | `acme.inventory.app` | Natural for browser apps; needs wildcard DNS/cert |
+| Cookie | `Cookie` | `acentra_tenant=acme` | Continuity only — carries a selection into the SignalR handshake |
+| JWT claim | `Header` | `tenant_id: acme` | Strongest — user can't self-select a foreign tenant. Becomes authoritative when auth lands |
 
-Resolution flow:
+Resolution flow (REQ-008 — **authentication first**):
 
-1. Read the hint (header/subdomain/claim).
-2. Resolve it to an internal `Tenant` row (cache by slug, TTL a few minutes).
-3. **Authorize**: does the authenticated principal have a membership in that tenant? If not → `403`.
-4. Publish into a scoped `ITenantContext { Guid TenantId; string Slug; }`.
+1. Read the winning hint and its source (precedence: header > query > subdomain > cookie).
+2. If the request is **not authenticated**: challenge (`401` for `/api/*`, redirect otherwise) on a tenant-scoped path, or continue on a tenant-agnostic path. **No tenant lookup happens at all**, so tenant existence cannot be probed anonymously.
+3. Authenticated with **no hint**: `400` on a tenant-scoped path, otherwise continue.
+4. Authenticated with a hint: look the tenant up **and** the caller's memberships — both unconditionally, uncached — then either publish into a scoped `ITenantContext { Guid TenantId; string Slug; }` or deny.
 
 Rules that keep this safe:
 
+- **Every denial is one uniform, slug-free `403`.** Unknown tenant, suspended tenant, non-member, unparseable slug and unusable identity all produce the *same* constant body (`TenantResolutionConstants.AccessDeniedMessage`); the precise cause is logged server-side at `Warning`. This removes the tenant-enumeration oracle.
+- **Tenant lookups are never cached.** A newly created tenant resolves on the immediately next request and a suspended tenant stops resolving on the immediately next request. The lookup is one indexed row on a unique column.
+- **A tenant-agnostic path never fails because of a hint**, and never clears the continuity cookie because of one — so a crafted `?tenant=` link cannot wipe a valid selection.
 - `ITenantContext` is **scoped**, never singleton, never static.
 - No tenant resolved → fail closed (`400`/`403`), never "all tenants".
-- The client-supplied tenant id is a **hint**, not authority. Claims win.
+- The client-supplied tenant id is a **hint**, not authority. Membership is authority and is re-checked on every request, including for the cookie.
+
+**Proxy awareness.** Behind a TLS-terminating proxy `Request.IsHttps` is false unless forwarded headers are honoured, which would emit the continuity cookie without `Secure`. `UseForwardedHeaders` is added as the *first* middleware, gated on `ForwardedHeaders:Enabled` (default `false`; the default known proxies/networks are kept, so an unknown proxy is never trusted, with `ForwardLimit: 1`).
 
 ### 4.1 Blazor Server circuits — the non-obvious part
 
@@ -163,6 +170,8 @@ Consequences the implementation must respect:
 ### 5.1 Schema
 
 Every tenant-owned table carries a non-null `TenantId` and is indexed `(TenantId, …)`. Composite unique keys are tenant-scoped, e.g. `UNIQUE (TenantId, Sku)` — two tenants may both own `SKU-001`.
+
+The control-plane `Tenant.DatabaseName` column is the **authoritative** database name for a tenant (it is what provisioning and the startup initializer create and migrate). The request path carries only a slug, so the two must agree by a single deterministic rule — see §5.4.
 
 ### 5.2 Global query filters
 
@@ -201,6 +210,13 @@ Query filters only cover reads. A `SaveChanges` interceptor will:
 | Right for | Most SaaS, this assignment | Regulated/noisy-neighbour workloads |
 
 **Decision: shared schema.** The EF filter + interceptor design is the same shape either way, and `ITenantContext` is the seam that makes a later move possible.
+
+**Routing contract: `TenantDatabaseName.FromSlug(slug)` is *the* mapping from a request's tenant to a database.** A request carries only a slug (the frozen `ITenantContext`/`TenantDescriptor` contracts do not carry `DatabaseName`), so the request path derives the database with `FromSlug(slug)`, while provisioning uses `Normalize(descriptor.DatabaseName)`. For **every** tenant row these must agree:
+
+- `TenantDatabaseName.FromSlug(tenant.Slug) == tenant.DatabaseName`, and
+- `TenantDatabaseName.Normalize(tenant.DatabaseName) == TenantDatabaseName.FromSlug(tenant.Slug)`.
+
+Two code paths therefore depend on this rule forever, and a divergence would connect a request to a wrong or nonexistent database. The query filter contains the blast radius (a wrong database yields zero rows, never another tenant's data) but fails *silently*, so `TenantRoutingConventionTests` iterates every registered tenant and fails loudly at test time if any row does not follow the convention. Do not "fix" a failure by loosening the test or editing the seeder — a divergent row is a real finding.
 
 ### 5.5 Proving isolation
 

@@ -25,4 +25,16 @@ public static class TenantResolutionConstants
     /// descriptor in <c>HttpContext.Items</c> for the circuit handler to pick up.
     /// </summary>
     public const string HttpContextItemKey = "acentra.resolved-tenant";
+
+    /// <summary>
+    /// The one and only body returned for every "you cannot use this tenant" outcome — unknown
+    /// tenant, suspended tenant, non-member, unparseable slug and unusable identity. It is a
+    /// constant that never contains the supplied slug, so the response is byte-for-byte
+    /// indistinguishable between causes and cannot be used to enumerate tenants. The precise
+    /// cause is logged server-side at Warning.
+    /// </summary>
+    public const string AccessDeniedMessage = "Access to the requested tenant was denied.";
+
+    /// <summary>Content type of the uniform denial body.</summary>
+    public const string AccessDeniedContentType = "text/plain; charset=utf-8";
 }

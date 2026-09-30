@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using Acentra.Domain.Abstractions;
 using Acentra.Infrastructure.ControlPlane;
 using Acentra.Web.Auth;
@@ -13,11 +14,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Acentra.IntegrationTests;
 
 /// <summary>
-/// Focused proof of the REQ-002 §6 resolution matrix and the Blazor circuit bridge.
+/// Focused proof of the REQ-008 §6 resolution matrix (auth-first ordering, the uniform 403,
+/// source-aware cookie handling and the tightened allowlist) and of the Blazor circuit bridge.
 /// These drive <see cref="TenantResolutionMiddleware"/> and <see cref="TenantCircuitHandler"/>
 /// directly with a real <see cref="TenantState"/>/<see cref="ITenantContext"/> and the real
-/// hint resolvers, so the four mandated cases are asserted deterministically (no DB, no
-/// network, no SignalR flakiness).
+/// hint resolvers, so the cases are asserted deterministically (no DB, no network, no SignalR
+/// flakiness). The anti-enumeration assertions compare full response bodies, not just codes.
 /// </summary>
 public sealed class TenantResolutionTests
 {
@@ -60,7 +62,7 @@ public sealed class TenantResolutionTests
     }
 
     [Fact]
-    public async Task UnknownSlug_IsBadRequest()
+    public async Task UnknownSlug_IsForbidden_WithTheUniformBody()
     {
         var (context, state) = Build("/inventory", member: MemberId, header: "does-not-exist");
         var registry = RegistryAcmeFor(MemberId);
@@ -68,7 +70,8 @@ public sealed class TenantResolutionTests
         var called = await InvokeAsync(context, state, registry);
 
         Assert.False(called);
-        Assert.Equal(400, context.Response.StatusCode);
+        Assert.Equal(403, context.Response.StatusCode);
+        Assert.Equal(TenantResolutionConstants.AccessDeniedMessage, BodyText(context));
         Assert.False(state.IsResolved);
     }
 
@@ -198,15 +201,245 @@ public sealed class TenantResolutionTests
     }
 
     [Fact]
-    public async Task NonMember_IsForbidden_EvenOnAgnosticPath_WhenHintIsPresent()
+    public async Task NonMember_OnAgnosticPath_WithHint_ContinuesUnresolved()
     {
+        // REQ-008: a tenant-agnostic path never fails because of a hint. A foreign hint is
+        // simply ignored (no 403), rather than the old behaviour that 403'd here.
         var (context, state) = Build("/", member: OutsiderId, header: "acme");
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.True(called);
+        Assert.Equal(200, context.Response.StatusCode);
+        Assert.False(state.IsResolved);
+    }
+
+    // ------------------------------------------- §6 anti-enumeration (byte-identical)
+
+    [Fact]
+    public async Task EveryDeniedCause_ProducesAByteIdentical403()
+    {
+        // Unknown tenant.
+        var (unknownCtx, unknownState) = Build("/inventory", MemberId, "does-not-exist");
+        await InvokeAsync(unknownCtx, unknownState, RegistryAcmeFor(MemberId));
+
+        // Suspended tenant: the registry yields null for anything that is not Active, exactly as the
+        // real TenantRegistry does for a non-Active row — so the middleware cannot distinguish it.
+        var suspendedRegistry = new FakeTenantRegistry();
+        suspendedRegistry.ForUser[MemberId] = [Acme];
+        var (suspendedCtx, suspendedState) = Build("/inventory", MemberId, "acme");
+        await InvokeAsync(suspendedCtx, suspendedState, suspendedRegistry);
+
+        // Non-member.
+        var (nonMemberCtx, nonMemberState) = Build("/inventory", OutsiderId, "acme");
+        await InvokeAsync(nonMemberCtx, nonMemberState, RegistryAcmeFor(MemberId));
+
+        // Unparseable slug.
+        var (badSlugCtx, badSlugState) = Build("/inventory", MemberId, "ACME!!");
+        await InvokeAsync(badSlugCtx, badSlugState, RegistryAcmeFor(MemberId));
+
+        // Unusable identity: authenticated but NameIdentifier is not a Guid.
+        var (badIdentityCtx, badIdentityState) = BuildAuthenticated("/inventory", nameIdentifier: "not-a-guid", header: "acme");
+        await InvokeAsync(badIdentityCtx, badIdentityState, RegistryAcmeFor(MemberId));
+
+        var snapshots = new[]
+        {
+            Capture(unknownCtx),
+            Capture(suspendedCtx),
+            Capture(nonMemberCtx),
+            Capture(badSlugCtx),
+            Capture(badIdentityCtx)
+        };
+
+        foreach (var snapshot in snapshots)
+        {
+            Assert.Equal(403, snapshot.StatusCode);
+            Assert.Equal(TenantResolutionConstants.AccessDeniedContentType, snapshot.ContentType);
+            Assert.Equal(TenantResolutionConstants.AccessDeniedMessage, snapshot.BodyText);
+
+            // The body must never echo the supplied slug.
+            Assert.DoesNotContain("acme", snapshot.BodyText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("does-not-exist", snapshot.BodyText, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task Unauthenticated_EveryHintOutcome_IsByteIdentical_AndPerformsNoLookup()
+    {
+        // (a) no hint, (b) valid slug, (c) unknown slug, (d) suspended slug: unauthenticated, all
+        // collapse to the same challenge and NO tenant lookup is even attempted. /api/* so the
+        // middleware writes its own bare 401 rather than the Identity redirect.
+        var cases = new (string? Header, string Label)[]
+        {
+            (null, "no hint"),
+            ("acme", "valid slug"),
+            ("does-not-exist", "unknown slug"),
+            ("acme", "suspended slug")
+        };
+
+        var snapshots = new List<(string Label, CapturedResponse Response)>();
+
+        foreach (var (header, label) in cases)
+        {
+            // Even a slug that would resolve for a member is never touched, because auth comes first.
+            var registry = RegistryAcmeFor(MemberId);
+            var (context, state) = Build("/api/products", member: null, header: header);
+
+            var called = await InvokeAsync(context, state, registry);
+
+            Assert.False(called);
+            Assert.Equal(0, registry.BySlugCalls);
+            Assert.Equal(0, registry.ForUserCalls);
+            Assert.False(state.IsResolved);
+            snapshots.Add((label, Capture(context)));
+        }
+
+        var baseline = snapshots[0].Response;
+
+        foreach (var (label, snapshot) in snapshots)
+        {
+            Assert.Equal(401, snapshot.StatusCode);
+            Assert.Equal(baseline.ContentType, snapshot.ContentType);
+            Assert.Equal(baseline.Body, snapshot.Body);          // full bytes, not just status
+            Assert.Equal(baseline.SetCookie, snapshot.SetCookie);
+        }
+    }
+
+    [Fact]
+    public async Task Unauthenticated_Request_PerformsNoTenantLookup()
+    {
+        // Auth first means the registry is never touched, so no tenant existence can be probed.
+        var registry = new FakeTenantRegistry();
+        var (context, state) = Build("/api/products", member: null, header: "acme");
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.False(called);
+        Assert.Equal(401, context.Response.StatusCode);
+        Assert.Equal(0, registry.BySlugCalls);
+        Assert.Equal(0, registry.ForUserCalls);
+    }
+
+    [Fact]
+    public async Task Authenticated_WithHint_AlwaysPerformsBothLookups_EvenOnFailure()
+    {
+        // Equalised work: a non-member must run the membership lookup AND the tenant lookup, exactly
+        // like an unknown tenant, so timing cannot discriminate between the two causes.
+        var nonMemberRegistry = RegistryAcmeFor(MemberId);
+        var (nonMemberCtx, nonMemberState) = Build("/inventory", OutsiderId, "acme");
+        await InvokeAsync(nonMemberCtx, nonMemberState, nonMemberRegistry);
+
+        var unknownRegistry = RegistryAcmeFor(MemberId);
+        var (unknownCtx, unknownState) = Build("/inventory", MemberId, "does-not-exist");
+        await InvokeAsync(unknownCtx, unknownState, unknownRegistry);
+
+        Assert.Equal(1, nonMemberRegistry.BySlugCalls);
+        Assert.Equal(1, nonMemberRegistry.ForUserCalls);
+        Assert.Equal(1, unknownRegistry.BySlugCalls);
+        Assert.Equal(1, unknownRegistry.ForUserCalls);
+    }
+
+    // -------------------------------------------------- §6 source-aware cookie handling
+
+    [Fact]
+    public async Task CookieSourcedFailure_ClearsTheContinuityCookie()
+    {
+        var (context, state) = Build("/inventory", MemberId, header: null);
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=does-not-exist";
         var registry = RegistryAcmeFor(MemberId);
 
         var called = await InvokeAsync(context, state, registry);
 
         Assert.False(called);
         Assert.Equal(403, context.Response.StatusCode);
+        Assert.Contains(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Fact]
+    public async Task CookieSourcedUnparseableSlug_ClearsTheContinuityCookie()
+    {
+        // The old code forgot to clear the cookie on the unparseable-slug branch; it must clear now.
+        var (context, state) = Build("/inventory", MemberId, header: null);
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=ACME!!";
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.False(called);
+        Assert.Equal(403, context.Response.StatusCode);
+        Assert.Contains(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Fact]
+    public async Task HeaderSourcedFailure_DoesNotTouchTheContinuityCookie()
+    {
+        // A valid selection lives in the cookie; a header-sourced failure must leave it alone.
+        var (context, state) = Build("/inventory", MemberId, header: "does-not-exist");
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=acme";
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.False(called);
+        Assert.Equal(403, context.Response.StatusCode);
+        Assert.DoesNotContain(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Fact]
+    public async Task QuerySourcedFailure_DoesNotTouchTheContinuityCookie()
+    {
+        var (context, state) = Build("/?tenant=does-not-exist", MemberId, header: null);
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=acme";
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.True(called);
+        Assert.DoesNotContain(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Theory]
+    [InlineData("?tenant=does-not-exist")]  // query-sourced foreign hint
+    [InlineData("?tenant=acme")]            // query-sourced foreign (non-member) hint
+    public async Task AgnosticPath_WithQueryHint_NeverFailsNorClearsTheCookie(string query)
+    {
+        // The crafted-link vector: an allowlisted path with a foreign ?tenant= must not 403 and must
+        // not wipe the continuity cookie.
+        var (context, state) = Build("/" + query, OutsiderId, header: null);
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=acme";
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.True(called);
+        Assert.NotEqual(403, context.Response.StatusCode);
+        Assert.DoesNotContain(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Fact]
+    public async Task AgnosticPath_WithCookieSourcedForeignHint_DoesNotClearTheCookie()
+    {
+        var (context, state) = Build("/", MemberId, header: null);
+        context.Request.Headers.Cookie = $"{TenantResolutionConstants.CookieName}=foreign";
+        var registry = RegistryAcmeFor(MemberId);
+
+        var called = await InvokeAsync(context, state, registry);
+
+        Assert.True(called);
+        Assert.NotEqual(403, context.Response.StatusCode);
+        Assert.DoesNotContain(TenantResolutionConstants.CookieName, SetCookieHeader(context));
+    }
+
+    [Fact]
+    public async Task SuccessfulResolution_PublishesTheContinuityCookie()
+    {
+        var (context, state) = Build("/inventory", MemberId, "acme");
+        var registry = RegistryAcmeFor(MemberId);
+
+        await InvokeAsync(context, state, registry);
+
+        Assert.Contains(TenantResolutionConstants.CookieName, SetCookieHeader(context));
     }
 
     // --------------------------------------------------------------- circuit bridge
@@ -297,9 +530,39 @@ public sealed class TenantResolutionTests
     [InlineData("/inventory")]
     [InlineData("/api/products")]
     [InlineData("/tenant-required")]
+    [InlineData("/health")]                       // REQ-008: removed from the allowlist, no endpoint exists
+    [InlineData("/healthz")]
+    [InlineData("/.well-known/openid-configuration")]  // REQ-008: removed from the allowlist
     public void TenantAgnosticPaths_Classifies_TenantScopedPaths(string path)
     {
         Assert.False(TenantAgnosticPaths.IsTenantAgnostic(new PathString(path), new TestWebHostEnvironment()));
+    }
+
+    [Fact]
+    public void Directory_UnderWwwRoot_IsNotTenantAgnostic()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "acentra-agnostic-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "assets"));
+        File.WriteAllText(Path.Combine(root, "assets", "site.css"), "body{}");
+
+        try
+        {
+            var environment = new TestWebHostEnvironment
+            {
+                WebRootPath = root,
+                WebRootFileProvider = new PhysicalFileProvider(root)
+            };
+
+            // A directory is not a file: a whole tree must not become tenant-agnostic.
+            Assert.False(TenantAgnosticPaths.IsTenantAgnostic(new PathString("/assets"), environment));
+
+            // A real file inside it still is tenant-agnostic.
+            Assert.True(TenantAgnosticPaths.IsTenantAgnostic(new PathString("/assets/site.css"), environment));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     // ------------------------------------------------------- Web DI seam wiring
@@ -350,6 +613,7 @@ public sealed class TenantResolutionTests
         context.Request.Path = new PathString(path.Split('?')[0]);
         context.Request.QueryString = new QueryString(path.Contains('?') ? "?" + path.Split('?', 2)[1] : string.Empty);
         context.Request.Host = new HostString("localhost");
+        context.Response.Body = new MemoryStream();
 
         if (header is not null)
         {
@@ -358,14 +622,24 @@ public sealed class TenantResolutionTests
 
         if (member is { } id)
         {
-            context.User = new ClaimsPrincipal(
-                new ClaimsIdentity(
-                    [new Claim(ClaimTypes.NameIdentifier, id.ToString())],
-                    authenticationType: "test"));
+            context.User = AuthenticatedUser(id.ToString());
         }
 
         return (context, new TenantState());
     }
+
+    private static (DefaultHttpContext Context, TenantState State) BuildAuthenticated(
+        string path, string nameIdentifier, string? header)
+    {
+        var (context, state) = Build(path, member: null, header);
+        context.User = AuthenticatedUser(nameIdentifier);
+        return (context, state);
+    }
+
+    private static ClaimsPrincipal AuthenticatedUser(string nameIdentifier) =>
+        new(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, nameIdentifier)],
+            authenticationType: "test"));
 
     private static async Task<bool> InvokeAsync(HttpContext context, TenantState state, ITenantRegistry registry)
     {
@@ -396,18 +670,52 @@ public sealed class TenantResolutionTests
         return called;
     }
 
+    private static string BodyText(HttpContext context) => Capture(context).BodyText;
+
+    private static string SetCookieHeader(HttpContext context) =>
+        context.Response.Headers.SetCookie.ToString();
+
+    private static CapturedResponse Capture(HttpContext context)
+    {
+        var body = ((MemoryStream)context.Response.Body).ToArray();
+
+        return new CapturedResponse(
+            context.Response.StatusCode,
+            context.Response.ContentType,
+            body,
+            Encoding.UTF8.GetString(body),
+            context.Response.Headers.SetCookie.ToString());
+    }
+
+    private sealed record CapturedResponse(
+        int StatusCode,
+        string? ContentType,
+        byte[] Body,
+        string BodyText,
+        string SetCookie);
+
     private sealed class FakeTenantRegistry : ITenantRegistry
     {
         public Dictionary<string, TenantDescriptor> BySlug { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<Guid, List<TenantDescriptor>> ForUser { get; } = [];
 
-        public Task<TenantDescriptor?> FindBySlugAsync(string slug, CancellationToken ct) =>
-            Task.FromResult(BySlug.GetValueOrDefault(slug));
+        public int BySlugCalls { get; private set; }
 
-        public Task<IReadOnlyList<TenantDescriptor>> FindForUserAsync(Guid userId, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<TenantDescriptor>>(
+        public int ForUserCalls { get; private set; }
+
+        public Task<TenantDescriptor?> FindBySlugAsync(string slug, CancellationToken ct)
+        {
+            BySlugCalls++;
+            return Task.FromResult(BySlug.GetValueOrDefault(slug));
+        }
+
+        public Task<IReadOnlyList<TenantDescriptor>> FindForUserAsync(Guid userId, CancellationToken ct)
+        {
+            ForUserCalls++;
+            return Task.FromResult<IReadOnlyList<TenantDescriptor>>(
                 ForUser.TryGetValue(userId, out var tenants) ? tenants : []);
+        }
     }
 
     private sealed class TestWebHostEnvironment : IWebHostEnvironment

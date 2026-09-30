@@ -10,7 +10,7 @@ namespace Acentra.Web.Auth;
 /// </summary>
 public sealed class CookieTenantResolver : ITenantResolver
 {
-    public string? Resolve(HttpContext context)
+    public TenantHint Resolve(HttpContext context)
     {
         if (context.Request.Cookies.TryGetValue(TenantResolutionConstants.CookieName, out var value))
         {
@@ -18,10 +18,10 @@ public sealed class CookieTenantResolver : ITenantResolver
 
             if (!string.IsNullOrEmpty(slug))
             {
-                return slug;
+                return new TenantHint(slug, TenantHintSource.Cookie);
             }
         }
 
-        return null;
+        return new TenantHint(null, TenantHintSource.None);
     }
 }
