@@ -316,9 +316,12 @@ git worktree prune || true
 ok "worktree metadata pruned"
 
 info "Removing temp files from earlier runs"
-rm -rf /tmp/acentra-ctx /tmp/acentra-demo 2>/dev/null || true
-rm -f /tmp/acentra-*.log /tmp/demo-run.log /tmp/served.css /tmp/cj.txt \
-      /tmp/v.txt /tmp/u.txt /tmp/nm.txt /tmp/un.txt 2>/dev/null || true
+# Everything this project writes to /tmp is prefixed 'acentra-', so remove the lot. An
+# earlier version listed specific names and missed the per-test temp storage roots
+# (/tmp/acentra-req005-*) that the file-upload tests create.
+rm -rf /tmp/acentra-* 2>/dev/null || true
+rm -f /tmp/demo-run.log /tmp/served.css /tmp/cj.txt /tmp/v.txt /tmp/u.txt \
+      /tmp/nm.txt /tmp/un.txt 2>/dev/null || true
 ok "temp files cleaned"
 
 if [[ "$DOWN_ONLY" -eq 1 ]]; then
