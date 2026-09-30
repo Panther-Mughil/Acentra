@@ -26,7 +26,7 @@ builder.Services.AddInventory();
 // Presentation services for the enterprise UI shell. Every one of these is in-memory, circuit-
 // scoped chrome: none of them is a source of tenant data. The pages that show real rows read
 // IInventoryService (tenant-scoped), and the tenant identity comes from TenantState through
-// TenantStateService — which is why the shell can render without ever inventing a tenant.
+// TenantStateService - which is why the shell can render without ever inventing a tenant.
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<TenantStateService>();
 builder.Services.AddScoped<DemoInventoryService>();

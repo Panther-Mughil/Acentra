@@ -4,7 +4,7 @@
 @inject IInventoryService Inventory
 @inject TenantState Tenant
 
-<PageTitle>Adjust stock — Acentra</PageTitle>
+<PageTitle>Adjust stock - Acentra</PageTitle>
 
 <h1>Adjust stock</h1>
 
@@ -35,7 +35,7 @@ else
         var product = _product.Rows[0];
 
         <p>
-            <strong>@product.Sku</strong> — @product.Name
+            <strong>@product.Sku</strong> - @product.Name
             @if (_quantity is not null)
             {
                 <span>· quantity after the last adjustment: <strong>@_quantity</strong></span>

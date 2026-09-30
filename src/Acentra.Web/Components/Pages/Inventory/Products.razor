@@ -4,7 +4,7 @@
 @inject TenantState Tenant
 @inject NavigationManager Navigation
 
-<PageTitle>Products — Acentra</PageTitle>
+<PageTitle>Products - Acentra</PageTitle>
 
 <h1>Products</h1>
 
@@ -15,7 +15,7 @@
 else
 {
     <p class="text-muted">
-        Tenant <strong>@Tenant.Slug</strong> — these rows belong to this tenant only.
+        Tenant <strong>@Tenant.Slug</strong>: these rows belong to this tenant only.
     </p>
 
     @if (_message is not null)
@@ -100,7 +100,7 @@ else
     protected override void OnInitialized()
     {
         // The rows holder subscribes to TenantState.Changed, clears the rows synchronously and
-        // re-queries — a circuit does NOT re-run OnInitializedAsync when the tenant changes.
+        // re-queries - a circuit does NOT re-run OnInitializedAsync when the tenant changes.
         _rows = new TenantScopedRows<Product>(Tenant, product => product.TenantId, (_, ct) => Inventory.ListProductsAsync(ct));
         _rows.Updated += OnRowsUpdated;
 

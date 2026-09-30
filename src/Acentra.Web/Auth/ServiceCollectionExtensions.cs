@@ -13,7 +13,7 @@ public static class ServiceCollectionExtensions
     /// strategies, the HTTP-request -> circuit bridge, and the dev startup service.
     ///
     /// <see cref="Acentra.Infrastructure.ControlPlane.ServiceCollectionExtensions.AddControlPlane"/>
-    /// cannot host these — <c>Acentra.Infrastructure</c> is a plain class library with no
+    /// cannot host these - <c>Acentra.Infrastructure</c> is a plain class library with no
     /// ASP.NET Core shared framework (verified).
     /// </summary>
     public static IServiceCollection AddTenantResolution(this IServiceCollection services)

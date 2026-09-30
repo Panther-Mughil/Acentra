@@ -5,7 +5,7 @@ namespace Acentra.Web.Auth;
 /// <summary>
 /// Circuit-scoped, mutable tenant context. This is the single seam the UI tenant switcher
 /// mutates and the source of truth for <see cref="ITenantContext"/> after a circuit starts.
-/// It never reads <see cref="Microsoft.AspNetCore.Http.HttpContext"/> — the resolved tenant
+/// It never reads <see cref="Microsoft.AspNetCore.Http.HttpContext"/> - the resolved tenant
 /// is seeded once at circuit start (see <see cref="TenantCircuitHandler"/>).
 /// Registered as Scoped: one instance per HTTP request scope *and* one per Blazor circuit.
 /// </summary>

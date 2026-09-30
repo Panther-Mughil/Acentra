@@ -8,7 +8,7 @@
 @inject TenantState Tenant
 @inject NavigationManager Navigation
 
-<PageTitle>@(IsNew ? "New product" : "Edit product") — Acentra</PageTitle>
+<PageTitle>@(IsNew ? "New product" : "Edit product") - Acentra</PageTitle>
 
 <h1>@(IsNew ? "New product" : "Edit product")</h1>
 
@@ -54,7 +54,7 @@ else
                 <label class="form-label" for="sku">SKU</label>
                 <InputText id="sku" class="form-control" @bind-Value="_form.Sku" />
                 <ValidationMessage For="() => _form.Sku" />
-                <div class="form-text">2–32 characters: A–Z, 0–9 and '-'. Unique within this tenant.</div>
+                <div class="form-text">2-32 characters: A-Z, 0-9 and '-'. Unique within this tenant.</div>
             </div>
 
             <div class="mb-3">
@@ -208,7 +208,7 @@ else
         }
         catch (ArgumentException exception)
         {
-            // Validation from the service layer (format, uniqueness, ranges) — a message, not a stack.
+            // Validation from the service layer (format, uniqueness, ranges) - a message, not a stack.
             _error = exception.Message;
         }
         catch (KeyNotFoundException)
@@ -287,7 +287,7 @@ else
     {
         [Required(ErrorMessage = "A SKU is required.")]
         [RegularExpression(InventoryService.SkuFormat,
-            ErrorMessage = "A SKU must be 2–32 characters using only A–Z, 0–9 and '-'.")]
+            ErrorMessage = "A SKU must be 2-32 characters using only A-Z, 0-9 and '-'.")]
         public string Sku { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "A name is required.")]

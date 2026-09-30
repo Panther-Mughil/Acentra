@@ -14,7 +14,7 @@ public static class TenantResolutionConstants
     /// <summary>
     /// Continuity hint. The page GET and the SignalR <c>/_blazor</c> handshake are separate
     /// HttpContexts and a WebSocket handshake carries no custom header, so the resolved slug
-    /// is echoed in this cookie to let the circuit re-resolve — never as authority.
+    /// is echoed in this cookie to let the circuit re-resolve - never as authority.
     /// </summary>
     public const string CookieName = "acentra_tenant";
 
@@ -27,7 +27,7 @@ public static class TenantResolutionConstants
     public const string HttpContextItemKey = "acentra.resolved-tenant";
 
     /// <summary>
-    /// The one and only body returned for every "you cannot use this tenant" outcome — unknown
+    /// The one and only body returned for every "you cannot use this tenant" outcome - unknown
     /// tenant, suspended tenant, non-member, unparseable slug and unusable identity. It is a
     /// constant that never contains the supplied slug, so the response is byte-for-byte
     /// indistinguishable between causes and cannot be used to enumerate tenants. The precise
@@ -48,7 +48,7 @@ public static class TenantResolutionConstants
     /// <summary>
     /// Default bound on how long a circuit's tenant authorization may go unchecked. A Blazor
     /// circuit makes no per-interaction HTTP request, so this interval is the *only* thing that
-    /// re-checks membership and tenant status — it is a staleness bound, not instant revocation.
+    /// re-checks membership and tenant status - it is a staleness bound, not instant revocation.
     /// </summary>
     public static readonly TimeSpan DefaultRevalidationInterval = TimeSpan.FromMinutes(5);
 

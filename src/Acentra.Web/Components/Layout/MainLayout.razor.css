@@ -77,10 +77,14 @@ main {
 }
 
 #blazor-error-ui {
-    color-scheme: light only;
-    background: lightyellow;
+    color-scheme: dark only;
+    background: linear-gradient(180deg, rgba(58, 20, 24, 0.95) 0%, rgba(36, 12, 16, 0.96) 100%);
+    color: #FCA5A5;
+    border-top: 1px solid rgba(248, 113, 113, 0.4);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -8px 28px -12px rgba(0, 0, 0, 0.7);
     box-sizing: border-box;
     display: none;
     left: 0;
@@ -89,6 +93,11 @@ main {
     width: 100%;
     z-index: 1000;
 }
+
+    #blazor-error-ui .reload {
+        color: #6FB2FF;
+        font-weight: 600;
+    }
 
     #blazor-error-ui .dismiss {
         cursor: pointer;

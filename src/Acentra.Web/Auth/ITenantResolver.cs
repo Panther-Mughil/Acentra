@@ -28,7 +28,7 @@ public enum TenantHintSource
 
 /// <summary>
 /// A candidate tenant slug together with the surface it was read from. <see cref="Value"/> is a
-/// hint only — <c>TenantResolutionMiddleware</c> still has to look it up and authorize membership
+/// hint only - <c>TenantResolutionMiddleware</c> still has to look it up and authorize membership
 /// before it means anything.
 /// </summary>
 public readonly record struct TenantHint(string? Value, TenantHintSource Source);

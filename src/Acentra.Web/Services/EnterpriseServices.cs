@@ -69,21 +69,21 @@ public class ToastService
 #region Tenant State Service
 
 /// <summary>
-/// The enterprise pages' view of "the current tenant" — backed by the <em>real</em>, authorized
+/// The enterprise pages' view of "the current tenant" - backed by the <em>real</em>, authorized
 /// tenant rather than a demo list.
 ///
 /// <para>
 /// The original UI was written against a hard-coded tenant list. That is precisely the hazard this
 /// project exists to avoid: a dashboard that prints one company's name while the pipeline resolved
 /// another tenant makes the isolation story decorative. So this class owns no tenant facts. The
-/// identity comes from <see cref="TenantState"/> — the circuit's authorized tenant, published by the
-/// REQ-008 middleware and seeded by <see cref="TenantCircuitHandler"/> — and the membership list is
+/// identity comes from <see cref="TenantState"/> - the circuit's authorized tenant, published by the
+/// REQ-008 middleware and seeded by <see cref="TenantCircuitHandler"/> - and the membership list is
 /// pushed in by <c>TenantSwitcher</c> after <em>its</em> single <c>ITenantRegistry</c> read.
 /// </para>
 ///
 /// <para>
 /// It deliberately performs no registry read of its own. <c>ITenantRegistry</c> is backed by
-/// the scoped <c>ControlPlaneDbContext</c>, which permits one operation at a time — a second reader
+/// the scoped <c>ControlPlaneDbContext</c>, which permits one operation at a time - a second reader
 /// racing the switcher inside the same render pass would trip EF's concurrency guard and fail the
 /// page (observed: "A second operation was started on this context instance"). One reader, one
 /// query, pushed to everyone who needs it.
@@ -98,7 +98,7 @@ public class ToastService
 ///
 /// <para>
 /// A circuit with no tenant (the tenant-agnostic <c>/</c> page, for instance) is represented by an
-/// explicit "no tenant selected" placeholder — never by the first tenant in a list.
+/// explicit "no tenant selected" placeholder - never by the first tenant in a list.
 /// </para>
 /// </summary>
 public class TenantStateService
@@ -122,7 +122,7 @@ public class TenantStateService
     }
 
     /// <summary>
-    /// The tenants the signed-in user is a member of — pushed in by <c>TenantSwitcher</c> from the
+    /// The tenants the signed-in user is a member of - pushed in by <c>TenantSwitcher</c> from the
     /// one registry read it already makes. Empty until then (the UI says so rather than guessing).
     /// </summary>
     public List<Tenant> AvailableTenants { get; private set; } = [];
@@ -138,7 +138,7 @@ public class TenantStateService
 
     /// <summary>
     /// Publishes the membership list the tenant switcher read. Called once per circuit (or again
-    /// after a circuit re-render) — never by a second registry reader.
+    /// after a circuit re-render) - never by a second registry reader.
     /// </summary>
     public void ApplyMemberships(IReadOnlyList<TenantDescriptor> memberships)
     {
@@ -152,7 +152,7 @@ public class TenantStateService
     }
 
     /// <summary>
-    /// Switches to a tenant by id or slug — <em>if</em> it is one of the caller's memberships.
+    /// Switches to a tenant by id or slug - <em>if</em> it is one of the caller's memberships.
     /// Anything else is ignored: membership is the authority, and there is no fallback tenant.
     /// </summary>
     public void SwitchTenant(string tenantIdOrSlug)
@@ -249,7 +249,7 @@ public class TenantStateService
     private static Branch UnresolvedBranch() => new()
     {
         Id = string.Empty,
-        Name = "—",
+        Name = "No branch",
         Code = string.Empty
     };
 
@@ -1210,10 +1210,10 @@ public class SecurityCenterService
     {
         TestSteps = new List<SecurityTestStep>
         {
-            new SecurityTestStep { StepNumber = "01", TestName = "Tenant A → Tenant A Internal Query", SourceContext = "Tenant TEN-001 (Apollo)", TargetContext = "Tenant TEN-001 (Apollo)", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 24, LogDetail = "Database row-level security policy verified. 12,840 records in scope." },
-            new SecurityTestStep { StepNumber = "02", TestName = "Tenant B → Tenant B Internal Query", SourceContext = "Tenant TEN-002 (MedCare)", TargetContext = "Tenant TEN-002 (MedCare)", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 18, LogDetail = "Isolated partition query resolved cleanly. Zero cross-boundary leakage." },
-            new SecurityTestStep { StepNumber = "03", TestName = "Tenant A → Tenant B Cross-Boundary Infiltration", SourceContext = "Tenant TEN-001 (Apollo)", TargetContext = "Tenant TEN-002 (MedCare)", ExpectedOutcome = "BLOCKED", Status = "Blocked", DurationMs = 12, LogDetail = "Security barrier intercepted invalid tenant token. HTTP 403 Forbidden emitted." },
-            new SecurityTestStep { StepNumber = "04", TestName = "Tenant B → Tenant A Cross-Boundary Infiltration", SourceContext = "Tenant TEN-002 (MedCare)", TargetContext = "Tenant TEN-001 (Apollo)", ExpectedOutcome = "BLOCKED", Status = "Blocked", DurationMs = 15, LogDetail = "Foreign KMS decryption token rejected. Zero payload leaked." },
+            new SecurityTestStep { StepNumber = "01", TestName = "Tenant A to Tenant A Internal Query", SourceContext = "Tenant TEN-001 (Apollo)", TargetContext = "Tenant TEN-001 (Apollo)", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 24, LogDetail = "Database row-level security policy verified. 12,840 records in scope." },
+            new SecurityTestStep { StepNumber = "02", TestName = "Tenant B to Tenant B Internal Query", SourceContext = "Tenant TEN-002 (MedCare)", TargetContext = "Tenant TEN-002 (MedCare)", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 18, LogDetail = "Isolated partition query resolved cleanly. Zero cross-boundary leakage." },
+            new SecurityTestStep { StepNumber = "03", TestName = "Tenant A to Tenant B Cross-Boundary Infiltration", SourceContext = "Tenant TEN-001 (Apollo)", TargetContext = "Tenant TEN-002 (MedCare)", ExpectedOutcome = "BLOCKED", Status = "Blocked", DurationMs = 12, LogDetail = "Security barrier intercepted invalid tenant token. HTTP 403 Forbidden emitted." },
+            new SecurityTestStep { StepNumber = "04", TestName = "Tenant B to Tenant A Cross-Boundary Infiltration", SourceContext = "Tenant TEN-002 (MedCare)", TargetContext = "Tenant TEN-001 (Apollo)", ExpectedOutcome = "BLOCKED", Status = "Blocked", DurationMs = 15, LogDetail = "Foreign KMS decryption token rejected. Zero payload leaked." },
             new SecurityTestStep { StepNumber = "05", TestName = "Encrypted S3 Storage Path Isolation", SourceContext = "IAM Role: ApolloVaultService", TargetContext = "s3://orgshield-ten002-vault/*", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 31, LogDetail = "Bucket policy denied cross-tenant S3 GetObject. Envelope encryption intact." },
             new SecurityTestStep { StepNumber = "06", TestName = "Role Boundary & Multi-Tenant RBAC Validation", SourceContext = "User: InventoryManager (TEN-001)", TargetContext = "Admin Config (TEN-001)", ExpectedOutcome = "PASS", Status = "Pass", DurationMs = 14, LogDetail = "Granular privilege verified. Elevation without MFA blocked." }
         };

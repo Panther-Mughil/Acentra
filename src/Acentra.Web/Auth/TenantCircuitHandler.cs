@@ -16,8 +16,8 @@ namespace Acentra.Web.Auth;
 ///
 /// With interactive Server the middleware runs once per circuit (at the <c>/_blazor</c>
 /// handshake), while <see cref="TenantState"/> is resolved in the circuit's own DI scope.
-/// This handler copies the tenant the middleware resolved on that request — published in
-/// <c>HttpContext.Items</c> — into this circuit's <see cref="TenantState"/>, then re-checks that
+/// This handler copies the tenant the middleware resolved on that request - published in
+/// <c>HttpContext.Items</c> - into this circuit's <see cref="TenantState"/>, then re-checks that
 /// authorization on a bounded interval (REQ-009).
 ///
 /// Fail closed: if there is nothing to seed (no HttpContext, or no resolved tenant, e.g. the
@@ -26,8 +26,8 @@ namespace Acentra.Web.Auth;
 ///
 /// A circuit is long-lived and makes no per-interaction HTTP request, so without the revalidation
 /// loop a revoked membership or suspended tenant would keep working for as long as the tab stays
-/// open. <see cref="RevalidateAsync"/> re-reads live membership/status — and clears, never
-/// switches — when it is no longer valid.
+/// open. <see cref="RevalidateAsync"/> re-reads live membership/status - and clears, never
+/// switches - when it is no longer valid.
 /// </summary>
 public sealed class TenantCircuitHandler : CircuitHandler
 {
@@ -39,7 +39,7 @@ public sealed class TenantCircuitHandler : CircuitHandler
 
     private readonly object _sync = new();
 
-    // Captured once, at circuit open. Revalidation never touches HttpContext again — there is no
+    // Captured once, at circuit open. Revalidation never touches HttpContext again - there is no
     // request to read it from after the handshake.
     private Guid _tenantId = Guid.Empty;
     private string _slug = string.Empty;
@@ -117,7 +117,7 @@ public sealed class TenantCircuitHandler : CircuitHandler
             _slug = descriptor.Slug;
 
             // The user id is read from the same handshake HttpContext that already carries the
-            // tenant, and captured here — never again. IHttpContextAccessor is unusable, and
+            // tenant, and captured here - never again. IHttpContextAccessor is unusable, and
             // wrong, once the circuit is running.
             _userId = GetUserId(httpContext!.User);
 
@@ -129,7 +129,7 @@ public sealed class TenantCircuitHandler : CircuitHandler
 
     public override Task OnConnectionUpAsync(Circuit circuit, CancellationToken cancellationToken)
     {
-        // Reconnecting to an existing circuit: resume the loop (idempotent — one loop per circuit).
+        // Reconnecting to an existing circuit: resume the loop (idempotent - one loop per circuit).
         if (_tenantId != Guid.Empty)
         {
             StartRevalidationLoop();
@@ -156,17 +156,17 @@ public sealed class TenantCircuitHandler : CircuitHandler
     /// Re-checks this circuit's tenant against live membership and tenant status.
     /// Returns <c>false</c> when access has been removed (and <see cref="TenantState"/> has been
     /// cleared); returns <c>true</c> when access is still valid, in which case the state is left
-    /// completely untouched — no reassignment and no <see cref="TenantState.Changed"/>.
+    /// completely untouched - no reassignment and no <see cref="TenantState.Changed"/>.
     ///
     /// Fail-closed decision table:
     /// <list type="bullet">
-    ///   <item>no usable user id → clear;</item>
-    ///   <item>tenant no longer resolvable (unknown / suspended / deleted) → clear;</item>
-    ///   <item>caller is no longer a member of this circuit's tenant → clear;</item>
-    ///   <item>otherwise → untouched.</item>
+    ///   <item>no usable user id -> clear;</item>
+    ///   <item>tenant no longer resolvable (unknown / suspended / deleted) -> clear;</item>
+    ///   <item>caller is no longer a member of this circuit's tenant -> clear;</item>
+    ///   <item>otherwise -> untouched.</item>
     /// </list>
     /// A registry error is treated as "no longer authorized". The circuit is never switched to a
-    /// different tenant the user still belongs to — it is cleared only.
+    /// different tenant the user still belongs to - it is cleared only.
     ///
     /// This is the testable seam: it is a plain awaitable method that takes no timer and no
     /// real circuit, so tests can drive it directly with a fake <see cref="ITenantRegistry"/>.
@@ -211,7 +211,7 @@ public sealed class TenantCircuitHandler : CircuitHandler
         }
 
         // Never switch: the user may still belong to other tenants, but this circuit's tenant is
-        // no longer authorized, so it is cleared — not retargeted.
+        // no longer authorized, so it is cleared - not retargeted.
         ct.ThrowIfCancellationRequested();
 
         var reason = await DescribeLossAsync(ct).ConfigureAwait(false);
@@ -263,7 +263,7 @@ public sealed class TenantCircuitHandler : CircuitHandler
     /// <summary>
     /// The single expiry path. Clears <see cref="TenantState"/> exactly once (so
     /// <see cref="TenantState.Changed"/> fires once and tenant pages drop their cached rows) and
-    /// logs the precise cause — which is never surfaced to the client.
+    /// logs the precise cause - which is never surfaced to the client.
     /// </summary>
     private bool Expire(string reason)
     {
