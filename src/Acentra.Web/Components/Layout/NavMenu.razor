@@ -1,30 +1,104 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Acentra.Web</a>
+@inject TenantStateService TenantService
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="sidebar-brand">
+    <div class="brand-shield-logo">
+        <IconSvg Name="shield-cross" Size="22" />
+    </div>
+    <div class="brand-title-wrap">
+        <div class="brand-name">ORGSHIELD <span class="brand-accent">360</span></div>
+        <div class="brand-subtitle">Secure Healthcare Operations</div>
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+<div class="sidebar-nav-container">
+    <div class="nav-section-label">Core Platform</div>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
+    <NavLink class="sidebar-link" href="" Match="NavLinkMatch.All">
+        <div class="sidebar-link-icon"><IconSvg Name="dashboard" Size="18" /></div>
+        <span>Overview</span>
+    </NavLink>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
+    <NavLink class="sidebar-link" href="operations">
+        <div class="sidebar-link-icon"><IconSvg Name="operations" Size="18" /></div>
+        <span>Operations</span>
+    </NavLink>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-    </nav>
+    <NavLink class="sidebar-link" href="inventory">
+        <div class="sidebar-link-icon"><IconSvg Name="inventory" Size="18" /></div>
+        <span>Inventory</span>
+        <span class="nav-badge-pill badge-amber">27 low</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="suppliers">
+        <div class="sidebar-link-icon"><IconSvg Name="suppliers" Size="18" /></div>
+        <span>Suppliers</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="orders">
+        <div class="sidebar-link-icon"><IconSvg Name="orders" Size="18" /></div>
+        <span>Purchase Orders</span>
+        <span class="nav-badge-pill badge-blue">184 active</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="documents">
+        <div class="sidebar-link-icon"><IconSvg Name="documents" Size="18" /></div>
+        <span>Document Vault</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="analytics">
+        <div class="sidebar-link-icon"><IconSvg Name="analytics" Size="18" /></div>
+        <span>Analytics</span>
+    </NavLink>
+
+    <div class="nav-section-label" style="margin-top: 10px;">Security & Governance</div>
+
+    <NavLink class="sidebar-link" href="security">
+        <div class="sidebar-link-icon" style="color: var(--teal-500);"><IconSvg Name="security" Size="18" /></div>
+        <span>Security Center</span>
+        <span class="nav-badge-pill badge-red">3 alerts</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="audit-logs">
+        <div class="sidebar-link-icon"><IconSvg Name="audit-logs" Size="18" /></div>
+        <span>Audit Logs</span>
+    </NavLink>
+
+    <NavLink class="sidebar-link" href="alerts">
+        <div class="sidebar-link-icon"><IconSvg Name="alerts" Size="18" /></div>
+        <span>Alert Center</span>
+    </NavLink>
+
+    <div class="nav-section-label" style="margin-top: 10px;">Administration</div>
+
+    <NavLink class="sidebar-link" href="settings">
+        <div class="sidebar-link-icon"><IconSvg Name="settings" Size="18" /></div>
+        <span>Settings</span>
+    </NavLink>
 </div>
 
+<div class="sidebar-footer">
+    <div class="tenant-security-chip" title="Current cryptographic tenant partition key">
+        <div>
+            <div style="color: #FFF; font-weight: 700; font-size: 11.5px;">@TenantService.CurrentTenant.Code</div>
+            <div style="font-size: 10px; color: #94A3B8;">@TenantService.CurrentTenant.Id</div>
+        </div>
+        <div class="chip-status-text">
+            <IconSvg Name="shield-check" Size="12" />
+            <span>AES-256</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

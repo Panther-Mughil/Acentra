@@ -1,0 +1,211 @@
+@inject TenantStateService TenantService
+@inject CommandPaletteService CommandService
+@inject AlertService AlertService
+@inject NavigationManager Nav
+@inject ToastService ToastService
+@implements IDisposable
+
+<header class="app-header">
+    <div class="header-left">
+        <button class="header-icon-btn d-lg-none" @onclick="ToggleMobileSidebar">
+            <IconSvg Name="dashboard" Size="18" />
+        </button>
+
+        <!-- Brand treatment on Header if sidebar is collapsed, or for strong anchor -->
+        <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" @onclick='() => Nav.NavigateTo("/")'>
+            <div class="brand-shield-logo" style="width: 34px; height: 34px;">
+                <IconSvg Name="shield-cross" Size="20" />
+            </div>
+            <div class="brand-title-wrap">
+                <div class="brand-name" style="color: var(--navy-900); font-size: 15px;">
+                    ORGSHIELD <span style="color: var(--blue-600);">360</span>
+                </div>
+                <div class="brand-subtitle" style="color: var(--text-muted); font-size: 9.5px;">
+                    Secure Healthcare Operations
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Center: Global Search trigger -->
+    <div class="header-center">
+        <button class="global-search-btn" @onclick="OpenCommandPalette">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <IconSvg Name="search" Size="15" />
+                <span>Search inventory, suppliers, orders, documents...</span>
+            </div>
+            <span class="kbd-shortcut">Ctrl + K</span>
+        </button>
+    </div>
+
+    <!-- Right: Tenant selector, Branch selector, Bell, Help, User -->
+    <div class="header-right">
+        <!-- Live System Status -->
+        <div class="system-status-indicator d-none d-xl-flex">
+            <span class="pulse-dot"></span>
+            <span>All systems operational</span>
+        </div>
+
+        <!-- Tenant Selector Pill -->
+        <div class="tenant-context-pill" @onclick="() => showTenantModal = true" title="Click to switch isolated healthcare organization">
+            <div class="tenant-pill-icon">
+                @TenantService.CurrentTenant.Name.Substring(0, 1)
+            </div>
+            <div class="tenant-pill-info d-none d-md-flex">
+                <span class="tenant-pill-name">@TenantService.CurrentTenant.Name</span>
+                <span class="tenant-pill-branch">@TenantService.CurrentBranch.Name</span>
+            </div>
+            <span style="color: var(--blue-600);"><IconSvg Name="chevron-down" Size="14" /></span>
+        </div>
+
+        <!-- Branch Quick Selector Dropdown (if multiple branches exist) -->
+        <div class="dropdown d-none d-lg-block position-relative">
+            <button class="btn-org btn-org-secondary btn-org-sm" style="border-radius: var(--border-radius-md); padding: 7px 12px;"
+                    @onclick="() => showBranchDropdown = !showBranchDropdown">
+                <span style="color: var(--teal-600);"><IconSvg Name="tenant" Size="14" /></span>
+                <span style="max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@TenantService.CurrentBranch.City</span>
+                <IconSvg Name="chevron-down" Size="12" />
+            </button>
+
+            @if (showBranchDropdown)
+            {
+                <div style="position: absolute; right: 0; top: 110%; background: #FFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); box-shadow: var(--shadow-lg); width: 240px; padding: 6px; z-index: 100;">
+                    <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 6px 8px;">
+                        @TenantService.CurrentTenant.Name Branches
+                    </div>
+                    @foreach (var br in TenantService.CurrentTenant.Branches)
+                    {
+                        var isSel = br.Id == TenantService.CurrentBranch.Id;
+                        <div style="padding: 8px 10px; border-radius: 6px; font-size: 12.5px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; background-color: @(isSel ? "var(--blue-50)" : "transparent"); font-weight: @(isSel ? "600" : "400");"
+                             @onclick="() => SelectBranch(br.Id)">
+                            <span>@br.Name</span>
+                            @if (isSel)
+                            {
+                                <span style="color: var(--blue-600);"><IconSvg Name="check" Size="14" /></span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Alert / Notification Bell -->
+        <button class="header-icon-btn" @onclick='() => Nav.NavigateTo("/alerts")' title="Notification Center">
+            <IconSvg Name="bell" Size="18" />
+            @if (AlertService.UnreadCount > 0)
+            {
+                <span class="badge-unread">@AlertService.UnreadCount</span>
+            }
+        </button>
+
+        <!-- Help Quick Guide -->
+        <button class="header-icon-btn" @onclick="() => showHelpModal = true" title="Platform Guide & Architecture">
+            <IconSvg Name="help" Size="18" />
+        </button>
+
+        <!-- User Profile Avatar & Dropdown -->
+        <div class="position-relative">
+            <div class="header-user-profile" @onclick="() => showUserMenu = !showUserMenu">
+                <div class="user-avatar-circle">
+                    J
+                </div>
+                <div class="user-text-info d-none d-sm-flex">
+                    <span class="user-display-name">Jagadeesh</span>
+                    <span class="user-role-title">Platform Administrator</span>
+                </div>
+                <span style="color: var(--text-light); margin-left: 2px;"><IconSvg Name="chevron-down" Size="12" /></span>
+            </div>
+
+            @if (showUserMenu)
+            {
+                <div style="position: absolute; right: 0; top: 110%; background: #FFF; border: 1px solid var(--border-subtle); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-xl); width: 220px; padding: 8px; z-index: 100;">
+                    <div style="padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 4px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--navy-900);">Jagadeesh</div>
+                        <div style="font-size: 11.5px; color: var(--text-muted);">jagadeesh@orgshield.internal</div>
+                        <div style="margin-top: 4px;"><span class="status-badge healthy" style="font-size: 10px; padding: 1px 6px;">Platform Admin</span></div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <div class="user-menu-item" @onclick='() => { showUserMenu = false; Nav.NavigateTo("/settings"); }'>
+                            <IconSvg Name="settings" Size="14" /> Profile & Account
+                        </div>
+                        <div class="user-menu-item" @onclick='() => { showUserMenu = false; Nav.NavigateTo("/settings"); }'>
+                            <IconSvg Name="security" Size="14" /> Security & Keyring
+                        </div>
+                        <div class="user-menu-item" @onclick='() => { showUserMenu = false; Nav.NavigateTo("/settings"); }'>
+                            <IconSvg Name="tenant" Size="14" /> Tenant Preferences
+                        </div>
+                        <div style="border-top: 1px solid var(--border-subtle); margin-top: 4px; padding-top: 4px;">
+                            <div class="user-menu-item" style="color: var(--red-600);" @onclick="SimulateSignOut">
+                                <IconSvg Name="close" Size="14" /> Sign Out
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</header>
+
+<TenantSwitcherModal @bind-IsOpen="showTenantModal" />
+<HelpGuideModal @bind-IsOpen="showHelpModal" />
+
+<style>
+    .user-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        color: var(--text-main);
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
+    }
+    .user-menu-item:hover {
+        background-color: var(--surface-hover);
+        color: var(--navy-900);
+    }
+</style>
+
+@code {
+    [Parameter] public EventCallback OnToggleSidebar { get; set; }
+
+    private bool showTenantModal = false;
+    private bool showHelpModal = false;
+    private bool showBranchDropdown = false;
+    private bool showUserMenu = false;
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+        AlertService.OnAlertsChanged += StateHasChanged;
+    }
+
+    private void OpenCommandPalette()
+    {
+        CommandService.Open();
+    }
+
+    private void ToggleMobileSidebar()
+    {
+        OnToggleSidebar.InvokeAsync();
+    }
+
+    private void SelectBranch(string branchId)
+    {
+        TenantService.SwitchBranch(branchId);
+        showBranchDropdown = false;
+    }
+
+    private void SimulateSignOut()
+    {
+        showUserMenu = false;
+        ToastService.Info("Session Maintained", "In demo presentation mode, administrator authentication remains active.");
+    }
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+        AlertService.OnAlertsChanged -= StateHasChanged;
+    }
+}

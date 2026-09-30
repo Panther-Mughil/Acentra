@@ -1,0 +1,394 @@
+@page "/suppliers"
+@inject SupplierService SupplierService
+@inject PurchaseOrderService OrderService
+@inject TenantStateService TenantService
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="page-header-row">
+    <div class="page-title-group">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="status-badge active-policy">
+                <IconSvg Name="truck" Size="14" /> Verified Vendor Directory
+            </span>
+            <span style="font-size: 12px; color: var(--text-light);">• Contracted Vendors for @TenantService.CurrentTenant.Name</span>
+        </div>
+        <h1>Supplier Management</h1>
+        <p>Manage healthcare vendor contracts, supply SLAs, delivery performance scores, and order fulfillment metrics.</p>
+    </div>
+
+    <div class="page-actions-group">
+        <button class="btn-org btn-org-primary" @onclick="() => showAddModal = true">
+            <IconSvg Name="plus" Size="14" /> + Add Supplier
+        </button>
+    </div>
+</div>
+
+<!-- Supplier KPIs -->
+<div class="kpi-grid" style="margin-bottom: 24px;">
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Active Suppliers</span>
+            <div class="kpi-icon-box kpi-icon-blue"><IconSvg Name="suppliers" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">@SupplierService.GetSuppliers().Count</span>
+                <span class="kpi-unit">Vendors</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-up"><IconSvg Name="check" Size="13" /> 100%</span>
+                <span class="trend-context">credentialed</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Avg On-Time SLA</span>
+            <div class="kpi-icon-box kpi-icon-teal"><IconSvg Name="shield-check" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--teal-700);">94.8%</span>
+                <span class="kpi-unit">On-Time</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-up"><IconSvg Name="arrow-up" Size="13" /> 1.8%</span>
+                <span class="trend-context">vs Q2</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Avg Lead Time</span>
+            <div class="kpi-icon-box kpi-icon-amber"><IconSvg Name="history" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number">3.4</span>
+                <span class="kpi-unit">Days</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-down-good"><IconSvg Name="arrow-down" Size="13" /> 0.4 days</span>
+                <span class="trend-context">faster</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-header">
+            <span class="kpi-label">Total Spend (YTD)</span>
+            <div class="kpi-icon-box kpi-icon-blue"><IconSvg Name="orders" Size="18" /></div>
+        </div>
+        <div>
+            <div class="kpi-value-row">
+                <span class="kpi-number" style="color: var(--navy-900);">₹5.65 Cr</span>
+            </div>
+            <div class="kpi-footer">
+                <span class="trend-up"><IconSvg Name="arrow-up" Size="13" /> 4.2%</span>
+                <span class="trend-context">procurement spend</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Supplier Data Table -->
+<div class="org-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+    <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+        <div style="position: relative; width: 320px;">
+            <input type="text" class="form-control-org" placeholder="Filter suppliers by name or category..."
+                   @bind="searchTerm" @bind:event="oninput" style="padding-left: 34px;" />
+            <div style="position: absolute; left: 11px; top: 10px; color: var(--text-light);">
+                <IconSvg Name="search" Size="15" />
+            </div>
+        </div>
+        <div style="font-size: 12.5px; color: var(--text-muted);">
+            Showing @FilteredSuppliers.Count verified vendor partners
+        </div>
+    </div>
+
+    <div class="table-responsive-org">
+        <table class="table-org">
+            <thead>
+                <tr>
+                    <th>Supplier</th>
+                    <th>Category</th>
+                    <th>Active Orders</th>
+                    <th>Delivery Score</th>
+                    <th>Average Lead Time</th>
+                    <th>Status</th>
+                    <th>Total Spend (YTD)</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var sup in FilteredSuppliers)
+                {
+                    <tr style="cursor: pointer;" @onclick="() => OpenSupplierDrawer(sup)">
+                        <td>
+                            <div style="font-weight: 700; color: var(--navy-900);">@sup.Name</div>
+                            <div style="font-size: 11.5px; color: var(--text-muted);">@sup.Location</div>
+                        </td>
+                        <td>
+                            <span style="font-size: 12.5px; color: var(--text-main);">@sup.Category</span>
+                        </td>
+                        <td>
+                            <strong style="color: var(--blue-600); font-size: 13.5px;">@sup.ActiveOrders</strong> orders
+                        </td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <strong style="font-size: 13.5px; color: @(sup.DeliveryScore >= 90 ? "var(--green-700)" : "var(--amber-600)");">@sup.DeliveryScore%</strong>
+                                <span style="font-size: 11px; color: var(--text-muted);">on-time</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span style="font-weight: 600; color: var(--navy-900);">@sup.AvgLeadTimeDays days</span>
+                        </td>
+                        <td>
+                            <span class="status-badge @GetSupplierStatusClass(sup.Status)">
+                                ● @sup.Status
+                            </span>
+                        </td>
+                        <td>
+                            <strong style="color: var(--navy-900); font-size: 13.5px;">₹@((sup.TotalSpendYtd / 100000).ToString("N1")) L</strong>
+                        </td>
+                        <td style="text-align: right;" @onclick:stopPropagation>
+                            <button class="btn-org btn-org-secondary btn-org-sm" @onclick="() => OpenSupplierDrawer(sup)">
+                                View Profile
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Supplier Detail Drawer (Section 17) -->
+@if (activeSupplier != null)
+{
+    <div class="drawer-backdrop-org" @onclick="CloseDrawer">
+        <div class="drawer-panel-org" @onclick:stopPropagation>
+            <!-- Drawer Header -->
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; justify-content: space-between; background: var(--surface-subtle);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="sku-badge">@activeSupplier.Id</span>
+                        <span class="status-badge @GetSupplierStatusClass(activeSupplier.Status)">● @activeSupplier.Status</span>
+                    </div>
+                    <h2 style="font-size: 18px; margin: 0; color: var(--navy-900);">@activeSupplier.Name</h2>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                        @activeSupplier.Category • @activeSupplier.Location
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="CloseDrawer" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <!-- Drawer Tabs -->
+            <div style="display: flex; border-bottom: 1px solid var(--border-subtle); padding: 0 20px; background: #FFFFFF; gap: 16px;">
+                @foreach (var tab in new[] { "Overview", "Products", "Purchase Orders", "Performance", "Documents" })
+                {
+                    <button class="btn" style="border: none; background: none; padding: 12px 4px; font-size: 13px; font-weight: 600; color: @(activeTab == tab ? "var(--blue-600)" : "var(--text-muted)"); border-bottom: 2px solid @(activeTab == tab ? "var(--blue-600)" : "transparent"); border-radius: 0; cursor: pointer;"
+                            @onclick="() => activeTab = tab">
+                        @tab
+                    </button>
+                }
+            </div>
+
+            <!-- Drawer Body -->
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                @if (activeTab == "Overview")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 18px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div style="background-color: var(--surface-subtle); padding: 14px; border-radius: var(--border-radius-md);">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Delivery SLA</div>
+                                <div style="font-size: 22px; font-weight: 800; color: var(--green-700);">@activeSupplier.DeliveryScore%</div>
+                                <div style="font-size: 11px; color: var(--text-light);">On-time rate</div>
+                            </div>
+                            <div style="background-color: var(--surface-subtle); padding: 14px; border-radius: var(--border-radius-md);">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Average Lead Time</div>
+                                <div style="font-size: 22px; font-weight: 800; color: var(--navy-900);">@activeSupplier.AvgLeadTimeDays d</div>
+                                <div style="font-size: 11px; color: var(--text-light);">Order to dock</div>
+                            </div>
+                        </div>
+
+                        <div style="font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-weight: 700; color: var(--navy-900);">Primary Point of Contact</div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Contact Name:</span>
+                                <strong>@activeSupplier.ContactPerson</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Email Address:</span>
+                                <strong style="color: var(--blue-600);">@activeSupplier.Email</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Direct Phone:</span>
+                                <strong>@activeSupplier.Phone</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px;">
+                                <span style="color: var(--text-muted);">Vendor Rating:</span>
+                                <strong style="color: var(--amber-600);">★ @activeSupplier.Rating / 5.0</strong>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "Purchase Orders")
+                {
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="font-weight: 700; font-size: 13px; color: var(--navy-900);">Active & Past Purchase Orders</div>
+                        @foreach (var po in OrderService.GetOrders().Where(o => o.SupplierId == activeSupplier.Id || o.SupplierName.Contains(activeSupplier.Name.Split(' ')[0])))
+                        {
+                            <div style="border: 1px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: var(--navy-900); font-size: 13px;">@po.PoNumber</strong>
+                                    <div style="font-size: 11.5px; color: var(--text-muted);">Created: @po.CreatedDate.ToString("MMM dd, yyyy")</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 700; color: var(--navy-900);">₹@po.TotalAmount.ToString("N0")</div>
+                                    <span class="status-badge approved" style="font-size: 10px; padding: 2px 6px;">@po.Status</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="padding: 30px; text-align: center; color: var(--text-muted);">
+                        <IconSvg Name="documents" Size="32" Class="mb-2" />
+                        <div>Contract agreements and ISO audit compliance certificates verified.</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Drawer Footer -->
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); display: flex; justify-content: space-between;">
+                <button class="btn-org btn-org-secondary" @onclick="CloseDrawer">Close</button>
+                <button class="btn-org btn-org-primary" @onclick='() => ToastService.Info("PO Workflow", "Drafting new procurement order with " + activeSupplier.Name)'>
+                    <IconSvg Name="plus" Size="14" /> Issue Purchase Order
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Supplier Modal -->
+@if (showAddModal)
+{
+    <div class="modal-backdrop-org" @onclick="() => showAddModal = false">
+        <div class="modal-content-org" @onclick:stopPropagation style="max-width: 560px;">
+            <div class="modal-header-org">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--blue-50); color: var(--blue-600); display: flex; align-items: center; justify-content: center;">
+                        <IconSvg Name="truck" Size="18" />
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 700; color: var(--navy-900);">Enroll New Supplier Partner</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Register credentialed healthcare vendor</p>
+                    </div>
+                </div>
+                <button class="header-icon-btn" @onclick="() => showAddModal = false" style="width: 32px; height: 32px;">
+                    <IconSvg Name="close" Size="14" />
+                </button>
+            </div>
+
+            <div class="modal-body-org" style="display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Supplier / Company Name</label>
+                    <input type="text" class="form-control-org" placeholder="e.g. MedVance Biomedical Technologies" @bind="newSup.Name" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Category</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. Critical Care Supplies" @bind="newSup.Category" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Location / City</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. Guindy Tech Park, Chennai" @bind="newSup.Location" />
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Contact Person</label>
+                        <input type="text" class="form-control-org" placeholder="e.g. Rajesh Kumar" @bind="newSup.ContactPerson" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">Email</label>
+                        <input type="email" class="form-control-org" placeholder="orders@medvance.com" @bind="newSup.Email" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer-org">
+                <button class="btn-org btn-org-secondary" @onclick="() => showAddModal = false">Cancel</button>
+                <button class="btn-org btn-org-primary" @onclick="SaveSupplier" disabled="@(string.IsNullOrWhiteSpace(newSup.Name))">
+                    <IconSvg Name="check" Size="14" /> Enroll Supplier
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string searchTerm = "";
+    private Supplier? activeSupplier;
+    private string activeTab = "Overview";
+    private bool showAddModal = false;
+    private Supplier newSup = new()
+    {
+        Category = "Medical Equipment",
+        Location = "Chennai, Tamil Nadu",
+        AvgLeadTimeDays = 3.0,
+        DeliveryScore = 95.0,
+        Status = "Excellent"
+    };
+
+    private List<Supplier> FilteredSuppliers => SupplierService.GetSuppliers().Where(s =>
+        string.IsNullOrWhiteSpace(searchTerm) ||
+        s.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+        s.Category.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+        s.Location.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+    ).ToList();
+
+    protected override void OnInitialized()
+    {
+        TenantService.OnTenantChanged += StateHasChanged;
+    }
+
+    private void OpenSupplierDrawer(Supplier s)
+    {
+        activeSupplier = s;
+        activeTab = "Overview";
+    }
+
+    private void CloseDrawer()
+    {
+        activeSupplier = null;
+    }
+
+    private void SaveSupplier()
+    {
+        if (string.IsNullOrWhiteSpace(newSup.Name)) return;
+        SupplierService.AddSupplier(newSup);
+        showAddModal = false;
+        newSup = new Supplier { Category = "Medical Equipment", Location = "Chennai, Tamil Nadu", AvgLeadTimeDays = 3.0, DeliveryScore = 95.0, Status = "Excellent" };
+    }
+
+    private string GetSupplierStatusClass(string status) => status.ToLowerInvariant() switch
+    {
+        "excellent" => "healthy",
+        "good" => "overstock",
+        "atrisk" => "critical",
+        _ => "draft"
+    };
+
+    public void Dispose()
+    {
+        TenantService.OnTenantChanged -= StateHasChanged;
+    }
+}

@@ -1,15 +1,20 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <ResourcePreloader />
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
-    <link rel="stylesheet" href="@Assets["app.css"]" />
-    <link rel="stylesheet" href="@Assets["Acentra.Web.styles.css"]" />
-    <ImportMap />
+    <title>ORGSHIELD 360 — Secure Healthcare Operations</title>
+    
+    <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="Acentra.Web.styles.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
@@ -17,7 +22,8 @@
 <body>
     <Routes @rendermode="InteractiveServer" />
     <ReconnectModal />
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="_framework/blazor.web.js"></script>
+    <script src="js/app.js"></script>
 </body>
 
 </html>
