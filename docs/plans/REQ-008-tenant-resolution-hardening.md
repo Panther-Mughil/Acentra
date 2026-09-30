@@ -13,13 +13,14 @@ Four approved changes, ordered by importance:
 2. **Remove the 2-minute tenant cache.** `TenantRegistry.FindBySlugAsync` caches the Active-only lookup for `CacheTtl = 2 min`, so a **suspended tenant keeps working for up to 2 minutes**. The same cache also stores `null`, so **a newly created tenant is unresolvable for up to 2 minutes**. Owner decision: **Option A — remove the cache entirely.** Correctness at a security boundary beats a micro-optimisation; the lookup is one indexed row on a unique column.
 3. **Tighten the tenant-agnostic allowlist** so it cannot become a hole: remove entries with no backing endpoint, and stop treating directories as tenant-agnostic files.
 4. **Make the continuity cookie tamper-resistant and correct**: only clear it when the cookie itself was the failing hint, clear it consistently, and emit `Secure` correctly behind a TLS-terminating proxy.
+5. **Kill the assembly-wide EF configuration landmine** (found during REQ-003, in REQ-002's file): `ControlPlaneDbContext.OnModelCreating` calls `builder.ApplyConfigurationsFromAssembly(typeof(ControlPlaneDbContext).Assembly)` with **no namespace filter**. Any `IEntityTypeConfiguration<T>` added anywhere in `Acentra.Infrastructure` is therefore pulled into the **control-plane** model. REQ-003 hit this for real: adding the four tenant configurations made EF pull `Product`/`StockLevel`/`StockMovement`/`TenantFile` into the control-plane model, which failed `PendingModelChangesWarning` at startup and broke 15 integration tests. REQ-003 dodged it by making its configurations explicit static appliers instead of `IEntityTypeConfiguration<T>` — a workaround, not a fix. Restore normal EF conventions by **filtering the discovery to the `Acentra.Infrastructure.ControlPlane.Configurations` namespace**.
 
 **Owner directive driving this plan:** *maximum production-ready application, with proper isolation security — never compromise it.* Where a choice trades debuggability or convenience against isolation correctness, isolation wins.
 
 ## 2. Scope
 
 - **Allowed Files/Directories:** `src/Acentra.Infrastructure/ControlPlane/TenantRegistry.cs`, `src/Acentra.Infrastructure/ControlPlane/ServiceCollectionExtensions.cs`, `src/Acentra.Web/Middleware/**`, `src/Acentra.Web/Auth/**`, `src/Acentra.Web/Program.cs`, `src/Acentra.Web/appsettings*.json`, `tests/Acentra.IntegrationTests/TenantResolution*.cs`.
-- **In-Scope:** the four changes above, plus updating the REQ-002 tests that assert the old status codes.
+- **In-Scope:** the five changes above, plus updating the REQ-002 tests that assert the old status codes.
 - **Out of Scope:** `TenantData/**` (REQ-003), `Storage/**` (REQ-004), inventory UI (REQ-005), circuit re-authorization (REQ-009), the isolation matrix proper (REQ-006).
 
 **Expected File/Component Changes:**
@@ -27,6 +28,7 @@ Four approved changes, ordered by importance:
 | File | Expected Change | Reason |
 | --- | --- | --- |
 | `src/Acentra.Infrastructure/ControlPlane/TenantRegistry.cs` | Modify | remove `IMemoryCache`, `CacheTtl`, `CacheKeyPrefix` |
+| `src/Acentra.Infrastructure/ControlPlane/ControlPlaneDbContext.cs` | Modify | namespace-filter `ApplyConfigurationsFromAssembly` |
 | `src/Acentra.Infrastructure/ControlPlane/ServiceCollectionExtensions.cs` | Modify | drop the now-unused `IMemoryCache` registration if nothing else uses it |
 | `src/Acentra.Web/Middleware/TenantResolutionMiddleware.cs` | Rewrite decision path | auth-first ordering + uniform 403 |
 | `src/Acentra.Web/Middleware/TenantAgnosticPaths.cs` | Modify | remove `/health`, `/.well-known`; require a real file (not a directory) |
@@ -145,6 +147,8 @@ Cookie rules:
 - [ ] `/health` now requires a tenant (no longer allowlisted).
 - [ ] A **directory** under wwwroot is **not** treated as tenant-agnostic.
 - [ ] `TenantRegistry` no longer references `IMemoryCache`; `CacheTtl`/`CacheKeyPrefix` are gone.
+- [ ] `ApplyConfigurationsFromAssembly` is namespace-filtered to `ControlPlane.Configurations`. Proof required: adding a throwaway `IEntityTypeConfiguration<T>` in a different namespace does **not** change the control-plane model (`has-pending-model-changes --context ControlPlaneDbContext` stays clean), and `ControlPlaneModel_DoesNotIncludeTenantDataEntities` (added by REQ-003) still passes. Delete the throwaway afterwards.
+- [ ] `dotnet ef migrations has-pending-model-changes --context ControlPlaneDbContext` and `--context AppDbContext` are both clean after the change.
 - [ ] With `ForwardedHeaders:Enabled=true` and `X-Forwarded-Proto: https`, the continuity cookie is emitted with `Secure`.
 
 **Required Tests / Demonstrated Behavior:** the byte-identical assertions are the core deliverable — they are what makes "no oracle" a fact rather than a claim. Compare full response bodies, not just codes.
