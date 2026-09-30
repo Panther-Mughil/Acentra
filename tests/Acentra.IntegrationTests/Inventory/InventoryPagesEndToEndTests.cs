@@ -345,6 +345,7 @@ public sealed class InventoryPagesEndToEndTests : IClassFixture<InventoryPagesEn
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            TestDatabase.ApplyPoolCap(builder);
 
             builder.ConfigureTestServices(services =>
             {

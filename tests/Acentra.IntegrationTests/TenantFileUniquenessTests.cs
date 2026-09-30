@@ -126,22 +126,5 @@ public sealed class TenantFileUniquenessTests
         await provisioner.ProvisionAsync(tenant, CancellationToken.None);
     }
 
-    private static IConfiguration LoadConfiguration()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Acentra.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        var root = directory?.FullName
-            ?? throw new InvalidOperationException("Could not locate the repository root (Acentra.slnx).");
-
-        return new ConfigurationBuilder()
-            .AddJsonFile(Path.Combine(root, "src", "Acentra.Web", "appsettings.Development.json"), optional: false)
-            .AddJsonFile(Path.Combine(root, "src", "Acentra.Web", "appsettings.json"), optional: false)
-            .AddEnvironmentVariables()
-            .Build();
-    }
+    private static IConfiguration LoadConfiguration() => TestDatabase.Load();
 }

@@ -109,16 +109,7 @@ internal static class IsolationTestSupport
         }
     }
 
-    private static IConfiguration LoadConfiguration() =>
-        new ConfigurationBuilder()
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.Development.json"),
-                optional: false)
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.json"),
-                optional: false)
-            .AddEnvironmentVariables()
-            .Build();
+    private static IConfiguration LoadConfiguration() => TestDatabase.Load();
 }
 
 /// <summary>

@@ -494,33 +494,7 @@ public sealed class TenantDataIsolationTests : IClassFixture<TenantDataIsolation
 
     private static string NewSku(string label) => $"SKU-{label}-{Guid.NewGuid():N}"[..24];
 
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Acentra.slnx")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not locate the repository root (Acentra.slnx).");
-    }
-
-    private static IConfiguration LoadConfiguration() =>
-        new ConfigurationBuilder()
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.Development.json"),
-                optional: false)
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.json"),
-                optional: false)
-            .AddEnvironmentVariables()
-            .Build();
+    private static IConfiguration LoadConfiguration() => TestDatabase.Load();
 
     /// <summary>Hosts the real app so the startup provisioning hook is exercised, not mocked.</summary>
     public sealed class HostFactory : WebApplicationFactory<TenantResolutionMiddleware>
@@ -528,6 +502,7 @@ public sealed class TenantDataIsolationTests : IClassFixture<TenantDataIsolation
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            TestDatabase.ApplyPoolCap(builder);
 
             base.ConfigureWebHost(builder);
         }

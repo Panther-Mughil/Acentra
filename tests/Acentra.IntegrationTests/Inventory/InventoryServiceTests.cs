@@ -329,31 +329,5 @@ public sealed class InventoryServiceTests
     private static string NewSku(string label) =>
         $"SKU-{label}-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant();
 
-    private static IConfiguration LoadConfiguration() =>
-        new ConfigurationBuilder()
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.Development.json"),
-                optional: false)
-            .AddJsonFile(
-                Path.Combine(RepositoryRoot(), "src", "Acentra.Web", "appsettings.json"),
-                optional: false)
-            .AddEnvironmentVariables()
-            .Build();
-
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Acentra.slnx")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not locate the repository root (Acentra.slnx).");
-    }
+    private static IConfiguration LoadConfiguration() => TestDatabase.Load();
 }

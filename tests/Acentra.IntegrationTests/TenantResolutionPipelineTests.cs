@@ -46,6 +46,19 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
         }
     }
 
+    /// <summary>
+    /// Asserts the middleware did NOT fail closed. The invariant these pipeline cases protect is that
+    /// a valid member with a resolvable tenant is handed to routing; whether routing then renders a
+    /// page (200) or finds no route (404) is routing's business and changes as pages are added. Only
+    /// the uniform fail-closed statuses — 400 for a missing hint, 403 for a denial — mean the
+    /// middleware blocked. Asserting a bare 404 would wrongly turn a legitimate page into a failure.
+    /// </summary>
+    private static void AssertNotBlocked(HttpResponseMessage response) =>
+        Assert.True(
+            response.StatusCode is not (HttpStatusCode.BadRequest or HttpStatusCode.Forbidden),
+            "Expected the middleware to hand the request to routing, but it failed closed with " +
+            $"{(int)response.StatusCode} {response.StatusCode}.");
+
     [Fact]
     public async Task Member_WithHeader_ResolvesAndContinuesToRouting()
     {
@@ -54,11 +67,12 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
         client.DefaultRequestHeaders.Add("X-Test-User", demoId.ToString());
         client.DefaultRequestHeaders.Add(TenantResolutionConstants.HeaderName, TenantSeeder.AcmeSlug);
 
-        // The middleware authorized the request and handed it to routing; the tenant-scoped
-        // path does not exist yet (REQ-005), so routing answers 404 — NOT 400/403.
+        // The middleware authorized the request and handed it to routing. The route's own status is
+        // routing's business (a tenant-scoped page now renders 200; an unrouted path is 404) — what
+        // must never happen is the middleware failing closed with 400/403.
         var response = await client.GetAsync("/inventory");
 
-        await AssertStatusAsync(HttpStatusCode.NotFound, response);
+        AssertNotBlocked(response);
     }
 
     [Fact]
@@ -194,7 +208,7 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
         }
         finally
         {
-            await DeleteTenantAsync(tempTenantId);
+            await DeleteTenantAsync(tempTenantId, TenantDatabaseName.FromSlug(tempSlug));
         }
     }
 
@@ -212,13 +226,13 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
             using var client = _factory.CreateClient();
 
             // 1. The newly created tenant resolves on the *immediately next* request: no negative
-            //    cache makes it wait, so the middleware passes the request to routing (404, not 403).
+            //    cache makes it wait, so the middleware hands the request to routing (not 400/403).
             using (var request = new HttpRequestMessage(HttpMethod.Get, "/inventory"))
             {
                 request.Headers.Add("X-Test-User", demoId.ToString());
                 request.Headers.Add(TenantResolutionConstants.HeaderName, slug);
                 using var response = await client.SendAsync(request);
-                await AssertStatusAsync(HttpStatusCode.NotFound, response);
+                AssertNotBlocked(response);
             }
 
             // 2. Flip to suspended. The *immediately next* request must fail closed: no positive
@@ -235,7 +249,7 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
         }
         finally
         {
-            await DeleteTenantAsync(tenantId);
+            await DeleteTenantAsync(tenantId, TenantDatabaseName.FromSlug(slug));
         }
     }
 
@@ -311,21 +325,28 @@ public sealed class TenantResolutionPipelineTests : IClassFixture<TenantTestFact
         await db.SaveChangesAsync();
     }
 
-    private async Task DeleteTenantAsync(Guid tenantId)
+    private async Task DeleteTenantAsync(Guid tenantId, string databaseName)
     {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
-
-        var memberships = await db.TenantMemberships.Where(m => m.TenantId == tenantId).ToListAsync();
-        db.TenantMemberships.RemoveRange(memberships);
-
-        var tenant = await db.Tenants.FindAsync(tenantId);
-        if (tenant is not null)
+        using (var scope = _factory.Services.CreateScope())
         {
-            db.Tenants.Remove(tenant);
+            var db = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
+
+            var memberships = await db.TenantMemberships.Where(m => m.TenantId == tenantId).ToListAsync();
+            db.TenantMemberships.RemoveRange(memberships);
+
+            var tenant = await db.Tenants.FindAsync(tenantId);
+            if (tenant is not null)
+            {
+                db.Tenants.Remove(tenant);
+            }
+
+            await db.SaveChangesAsync();
         }
 
-        await db.SaveChangesAsync();
+        // Deleting the row alone would orphan the database: another test host starting while the
+        // row was briefly Active runs TenantDatabaseInitializer and provisions it. Drop whatever
+        // was provisioned so the run leaves nothing behind (REQ-006 defends this the same way).
+        await IsolationTestSupport.DropDatabaseAsync(databaseName);
     }
 
     private static async Task AssertResponsesByteIdenticalAsync(
@@ -350,6 +371,7 @@ public sealed class TenantTestFactory : WebApplicationFactory<TenantResolutionMi
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        TestDatabase.ApplyPoolCap(builder);
         builder.ConfigureTestServices(TenantTestAuth.Register);
     }
 }
@@ -401,6 +423,7 @@ public sealed class ForwardedHeadersCookieTests : IClassFixture<ForwardedHeaders
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            TestDatabase.ApplyPoolCap(builder);
 
             // UseSetting (host configuration) is present when Program reads builder.Configuration,
             // unlike a ConfigureAppConfiguration callback which can be applied after startup.
